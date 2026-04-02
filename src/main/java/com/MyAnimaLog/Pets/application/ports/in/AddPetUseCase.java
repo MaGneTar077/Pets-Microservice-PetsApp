@@ -1,4 +1,4 @@
-package com.MyAnimaLog.Pets.domain.ports.in;
+package com.MyAnimaLog.Pets.application.ports.in;
 
 import com.MyAnimaLog.Pets.domain.model.Pet;
 
