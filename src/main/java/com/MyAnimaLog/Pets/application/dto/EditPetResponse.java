@@ -1,4 +1,4 @@
-package com.MyAnimaLog.Pets.domain.model;
+package com.MyAnimaLog.Pets.application.dto;
 
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import lombok.AllArgsConstructor;
@@ -14,7 +14,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class Pet {
+public class EditPetResponse {
     private UUID id;
     private UUID ownerId;
     private String name;

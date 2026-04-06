@@ -7,6 +7,9 @@ import com.MyAnimaLog.Pets.infrastructure.repositories.JpaPetRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+import java.util.UUID;
+
 @Component
 @RequiredArgsConstructor
 public class PetRepositoryAdapter implements PetRepositoryPort {
@@ -22,4 +25,18 @@ public class PetRepositoryAdapter implements PetRepositoryPort {
                 )
         );
     }
+
+    @Override
+    public Optional<Pet> findById(UUID id) {
+        return jpaPetRepository.findById(id)
+                .map(petMapper::toDomain);
+    }
+
+    @Override
+    public Optional<Pet> findByIdAndOwnerId(UUID petId, UUID ownerId) {
+        return jpaPetRepository.findById(petId)
+                .filter(p -> p.getOwnerId().equals(ownerId))
+                .map(petMapper::toDomain);
+    }
+
 }

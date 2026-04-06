@@ -19,6 +19,7 @@ public class PetMapper {
                 .weight(pet.getWeight())
                 .photoUrl(pet.getPhotoUrl())
                 .createdAt(pet.getCreatedAt())
+                .updatedAt(pet.getUpdatedAt())
                 .build();
     }
 
@@ -35,6 +36,7 @@ public class PetMapper {
                 .weight(entity.getWeight())
                 .photoUrl(entity.getPhotoUrl())
                 .createdAt(entity.getCreatedAt())
+                .updatedAt(entity.getUpdatedAt())
                 .build();
     }
 }
