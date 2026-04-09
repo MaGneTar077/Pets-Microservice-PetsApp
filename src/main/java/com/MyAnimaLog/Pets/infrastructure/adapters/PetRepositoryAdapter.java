@@ -39,4 +39,8 @@ public class PetRepositoryAdapter implements PetRepositoryPort {
                 .map(petMapper::toDomain);
     }
 
+    @Override
+    public void deleteById(UUID id) {
+        jpaPetRepository.deleteById(id);
+    }
 }
