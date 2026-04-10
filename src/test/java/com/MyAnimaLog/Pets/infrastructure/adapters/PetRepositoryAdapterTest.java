@@ -112,4 +112,13 @@ class PetRepositoryAdapterTest {
 
         verify(petMapper, times(1)).toDomain(any(PetEntity.class));
     }
+
+    @Test
+    void deleteById_shouldCallJpaRepository_once() {
+        doNothing().when(jpaPetRepository).deleteById(any(UUID.class));
+
+        petRepositoryAdapter.deleteById(pet.getId());
+
+        verify(jpaPetRepository, times(1)).deleteById(pet.getId());
+    }
 }
