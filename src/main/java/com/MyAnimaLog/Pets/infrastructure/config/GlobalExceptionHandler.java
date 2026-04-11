@@ -1,5 +1,6 @@
 package com.MyAnimaLog.Pets.infrastructure.config;
 
+import com.MyAnimaLog.Pets.domain.exceptions.BirthDateNotRegisteredException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidPetDataException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
@@ -45,6 +46,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleGeneral(Exception ex) {
         log.error("Error inesperado: ", ex);
         return buildError(HttpStatus.INTERNAL_SERVER_ERROR, "Error interno del servidor");
+    }
+
+    @ExceptionHandler(BirthDateNotRegisteredException.class)
+    public ResponseEntity<Map<String, String>> handleBirthDateNotRegistered(BirthDateNotRegisteredException ex) {
+        return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
     }
 
     private ResponseEntity<Map<String, String>> buildError(HttpStatus status, String message) {
