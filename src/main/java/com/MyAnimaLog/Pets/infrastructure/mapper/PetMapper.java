@@ -1,5 +1,6 @@
 package com.MyAnimaLog.Pets.infrastructure.mapper;
 
+import com.MyAnimaLog.Pets.application.dto.PetResponse;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.infrastructure.entity.PetEntity;
 import org.springframework.stereotype.Component;
@@ -37,6 +38,22 @@ public class PetMapper {
                 .photoUrl(entity.getPhotoUrl())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
+                .build();
+    }
+
+    public PetResponse toResponse(Pet pet) {
+        return PetResponse.builder()
+                .id(pet.getId())
+                .ownerId(pet.getOwnerId())
+                .name(pet.getName())
+                .species(pet.getSpecies())
+                .breed(pet.getBreed())
+                .sex(pet.getSex())
+                .birthDate(pet.getBirthDate())
+                .height(pet.getHeight())
+                .weight(pet.getWeight())
+                .photoUrl(pet.getPhotoUrl())
+                .createdAt(pet.getCreatedAt())
                 .build();
     }
 }
