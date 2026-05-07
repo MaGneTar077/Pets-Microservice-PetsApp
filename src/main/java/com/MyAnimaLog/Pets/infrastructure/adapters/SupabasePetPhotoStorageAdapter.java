@@ -33,7 +33,7 @@ public class SupabasePetPhotoStorageAdapter implements PetPhotoStoragePort {
 
             ResponseEntity<String> response = restTemplate.exchange(
                     uploadUrl,
-                    HttpMethod.POST,
+                    HttpMethod.PUT,
                     entity,
                     String.class
             );
@@ -56,12 +56,21 @@ public class SupabasePetPhotoStorageAdapter implements PetPhotoStoragePort {
     public void delete(UUID petId, String photoUrl) {
         try {
             String fileName = extractFileNameFromUrl(photoUrl);
-            String deleteUrl = buildUploadUrl(fileName);
+            log.info("Deleting file from storage: {}", fileName);
+            String deleteUrl = supabaseConfig.getSupabaseUrl()
+                    + "/storage/v1/object/"
+                    + BUCKET;
 
-            HttpHeaders headers = buildHeaders(null);
-            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            HttpHeaders headers = buildHeaders("application/json");
+            String body = "{\"prefixes\": [\"" + fileName + "\"]}";
 
-            restTemplate.exchange(deleteUrl, HttpMethod.DELETE, entity, String.class);
+            log.info("Delete URL: {}, Body: {}", deleteUrl, body);
+
+            HttpEntity<String> entity = new HttpEntity<>(body, headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(deleteUrl, HttpMethod.DELETE, entity, String.class);
+
+            log.info("Delete response: {}", response.getBody());
 
         } catch (Exception ex) {
             log.warn("Could not delete photo from storage for pet {}: {}", petId, ex.getMessage());
