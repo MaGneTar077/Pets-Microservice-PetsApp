@@ -76,4 +76,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleNoSuchElement(NoSuchElementException ex) {
         return buildError(HttpStatus.NOT_FOUND, ex.getMessage());
     }
+
+    @ExceptionHandler(DocumentUploadException.class)
+    public ResponseEntity<Map<String, String>> handleDocumentUpload(DocumentUploadException ex) {
+        return buildError(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
+    }
+
+    @ExceptionHandler(DocumentNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleDocumentNotFound(DocumentNotFoundException ex) {
+        return buildError(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidFileException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidFile(InvalidFileException ex) {
+        return buildError(HttpStatus.UNSUPPORTED_MEDIA_TYPE, ex.getMessage());
+    }
 }
