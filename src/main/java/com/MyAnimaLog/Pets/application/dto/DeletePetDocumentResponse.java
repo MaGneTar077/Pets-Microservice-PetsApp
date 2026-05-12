@@ -14,5 +14,4 @@ import java.util.UUID;
 public class DeletePetDocumentResponse {
     private UUID documentId;
     private String message;
-
 }

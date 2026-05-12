@@ -91,4 +91,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleInvalidFile(InvalidFileException ex) {
         return buildError(HttpStatus.UNSUPPORTED_MEDIA_TYPE, ex.getMessage());
     }
+
+    @ExceptionHandler(DocumentNotBelongsToPetException.class)
+    public ResponseEntity<Map<String, String>> handleDocumentNotBelongs(DocumentNotBelongsToPetException ex) {
+        return buildError(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
 }
