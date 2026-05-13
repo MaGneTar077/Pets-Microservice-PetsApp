@@ -96,4 +96,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleDocumentNotBelongs(DocumentNotBelongsToPetException ex) {
         return buildError(HttpStatus.FORBIDDEN, ex.getMessage());
     }
+
+    @ExceptionHandler(InvalidDocumentException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidDocument(InvalidDocumentException ex) {
+        return buildError(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
 }
