@@ -1,6 +1,7 @@
 package com.MyAnimaLog.Pets.infrastructure.adapters;
 
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
+import com.MyAnimaLog.Pets.domain.enums.DocumentType;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
 import com.MyAnimaLog.Pets.infrastructure.mapper.PetDocumentMapper;
 import com.MyAnimaLog.Pets.infrastructure.repositories.JpaPetDocumentRepository;
@@ -46,5 +47,13 @@ public class PetDocumentRepositoryAdapter implements PetDocumentRepositoryPort {
     @Override
     public void deleteById(UUID id) {
         jpaRepository.deleteById(id);
+    }
+
+    @Override
+    public List<PetDocument> findAllByPetIdAndDocumentType(UUID petId, DocumentType documentType) {
+        return jpaRepository.findAllByPetIdAndDocumentType(petId, documentType)
+                .stream()
+                .map(mapper::toDomain)
+                .toList();
     }
 }
