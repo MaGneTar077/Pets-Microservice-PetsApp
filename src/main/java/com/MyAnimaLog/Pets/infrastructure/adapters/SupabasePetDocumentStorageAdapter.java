@@ -115,4 +115,9 @@ public class SupabasePetDocumentStorageAdapter implements PetDocumentStoragePort
         }
         return headers;
     }
+
+    @Override
+    public String getDownloadUrl(String fileUrl) {
+        return fileUrl;
+    }
 }
