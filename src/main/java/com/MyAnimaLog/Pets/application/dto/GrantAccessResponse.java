@@ -1,4 +1,4 @@
-package com.MyAnimaLog.Pets.domain.model;
+package com.MyAnimaLog.Pets.application.dto;
 
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import lombok.AllArgsConstructor;
@@ -12,11 +12,11 @@ import java.util.UUID;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-@Builder(toBuilder = true)
-public class PetUserAcces {
+@Builder
+public class GrantAccessResponse {
     private UUID id;
     private UUID petId;
     private UUID userId;
-    private Rol accesRole;
+    private Rol accessRole;
     private LocalDateTime createdAt;
 }
