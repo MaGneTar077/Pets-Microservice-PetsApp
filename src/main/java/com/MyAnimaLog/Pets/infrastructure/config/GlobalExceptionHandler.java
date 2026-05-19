@@ -101,4 +101,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleInvalidDocument(InvalidDocumentException ex) {
         return buildError(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
+
+    @ExceptionHandler(UnauthorizedPetAccessException.class)
+    public ResponseEntity<Map<String, String>> handleUnauthorizedPetAccess(UnauthorizedPetAccessException ex) {
+        return buildError(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(CannotGrantAccessToOwnerException.class)
+    public ResponseEntity<Map<String, String>> handleCannotGrantAccessToOwner(CannotGrantAccessToOwnerException ex) {
+        return buildError(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(AccessAlreadyGrantedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessAlreadyGranted(AccessAlreadyGrantedException ex) {
+        return buildError(HttpStatus.CONFLICT, ex.getMessage());
+    }
 }
