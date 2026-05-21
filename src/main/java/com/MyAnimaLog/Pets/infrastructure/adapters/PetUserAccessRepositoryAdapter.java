@@ -5,7 +5,9 @@ import com.MyAnimaLog.Pets.domain.model.PetUserAccess;
 import com.MyAnimaLog.Pets.infrastructure.mapper.PetUserAccessMapper;
 import com.MyAnimaLog.Pets.infrastructure.repositories.JpaPetUserAccessRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -31,6 +33,8 @@ public class PetUserAccessRepositoryAdapter implements PetUserAccessRepositoryPo
     }
 
     @Override
+    @Modifying
+    @Transactional
     public void deleteByPetIdAndUserId(UUID petId, UUID userId) {
         jpaPetUserAccessRepository.deleteByPetIdAndUserId(petId, userId);
     }

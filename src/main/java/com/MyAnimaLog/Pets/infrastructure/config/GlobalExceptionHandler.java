@@ -116,4 +116,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleAccessAlreadyGranted(AccessAlreadyGrantedException ex) {
         return buildError(HttpStatus.CONFLICT, ex.getMessage());
     }
+
+    @ExceptionHandler(AccessNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleAccessNotFound(AccessNotFoundException ex) {
+        return buildError(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
 }
