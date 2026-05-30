@@ -121,4 +121,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleAccessNotFound(AccessNotFoundException ex) {
         return buildError(HttpStatus.NOT_FOUND, ex.getMessage());
     }
+
+    @ExceptionHandler(InvitationNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleInvitationNotFound(InvitationNotFoundException ex) {
+        return buildError(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvitationAlreadyExistsException.class)
+    public ResponseEntity<Map<String, String>> handleInvitationAlreadyExists(InvitationAlreadyExistsException ex) {
+        return buildError(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvitationAlreadyProcessedException.class)
+    public ResponseEntity<Map<String, String>> handleInvitationAlreadyProcessed(InvitationAlreadyProcessedException ex) {
+        return buildError(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
 }
