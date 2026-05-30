@@ -12,4 +12,5 @@ public interface JpaPetInvitationRepository extends JpaRepository<PetInvitationE
     Optional<PetInvitationEntity> findByPetIdAndEmailAndStatus(UUID petId, String email, InvitationStatus status);
     List<PetInvitationEntity> findAllByPetIdAndStatus(UUID petId, InvitationStatus status);
     List<PetInvitationEntity> findAllByEmailAndStatus(String email, InvitationStatus status);
+    Optional<PetInvitationEntity> findByToken(String token);
 }
