@@ -59,4 +59,12 @@ public class PetInvitationRepositoryAdapter implements PetInvitationRepositoryPo
         return jpaPetInvitationRepository.findByToken(token)
                 .map(petInvitationMapper::toDomain);
     }
+
+    @Override
+    public List<PetInvitation> findAllByPetIdAndEmail(UUID petId, String email) {
+        return jpaPetInvitationRepository.findAllByPetIdAndEmail(petId, email)
+                .stream()
+                .map(petInvitationMapper::toDomain)
+                .toList();
+    }
 }
