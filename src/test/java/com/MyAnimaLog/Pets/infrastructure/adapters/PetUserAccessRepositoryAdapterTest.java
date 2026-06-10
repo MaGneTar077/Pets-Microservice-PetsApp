@@ -13,6 +13,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -135,5 +137,26 @@ class PetUserAccessRepositoryAdapterTest {
         petUserAccessRepositoryAdapter.deleteByPetIdAndUserId(petId, userId);
 
         verify(jpaPetUserAccessRepository, times(1)).deleteByPetIdAndUserId(petId, userId);
+    }
+
+    @Test
+    void findAllByUserId_shouldReturnList_whenFound() {
+        when(jpaPetUserAccessRepository.findAllByUserId(userId)).thenReturn(List.of(entity));
+        when(petUserAccessMapper.toDomain(any(PetUserAccessEntity.class))).thenReturn(domain);
+
+        List<PetUserAccess> result = petUserAccessRepositoryAdapter.findAllByUserId(userId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getUserId()).isEqualTo(userId);
+    }
+
+    @Test
+    void findAllByUserId_shouldReturnEmptyList_whenNotFound() {
+        when(jpaPetUserAccessRepository.findAllByUserId(userId)).thenReturn(Collections.emptyList());
+
+        List<PetUserAccess> result = petUserAccessRepositoryAdapter.findAllByUserId(userId);
+
+        assertThat(result).isEmpty();
+        verify(petUserAccessMapper, never()).toDomain(any());
     }
 }

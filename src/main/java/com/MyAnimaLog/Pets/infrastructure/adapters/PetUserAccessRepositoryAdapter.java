@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,5 +38,13 @@ public class PetUserAccessRepositoryAdapter implements PetUserAccessRepositoryPo
     @Transactional
     public void deleteByPetIdAndUserId(UUID petId, UUID userId) {
         jpaPetUserAccessRepository.deleteByPetIdAndUserId(petId, userId);
+    }
+
+    @Override
+    public List<PetUserAccess> findAllByUserId(UUID userId) {
+        return jpaPetUserAccessRepository.findAllByUserId(userId)
+                .stream()
+                .map(petUserAccessMapper::toDomain)
+                .toList();
     }
 }
