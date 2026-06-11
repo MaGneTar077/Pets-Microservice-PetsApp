@@ -159,4 +159,25 @@ class PetUserAccessRepositoryAdapterTest {
         assertThat(result).isEmpty();
         verify(petUserAccessMapper, never()).toDomain(any());
     }
+
+    @Test
+    void findAllByPetId_shouldReturnList_whenFound() {
+        when(jpaPetUserAccessRepository.findAllByPetId(petId)).thenReturn(List.of(entity));
+        when(petUserAccessMapper.toDomain(any(PetUserAccessEntity.class))).thenReturn(domain);
+
+        List<PetUserAccess> result = petUserAccessRepositoryAdapter.findAllByPetId(petId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getPetId()).isEqualTo(petId);
+    }
+
+    @Test
+    void findAllByPetId_shouldReturnEmptyList_whenNotFound() {
+        when(jpaPetUserAccessRepository.findAllByPetId(petId)).thenReturn(Collections.emptyList());
+
+        List<PetUserAccess> result = petUserAccessRepositoryAdapter.findAllByPetId(petId);
+
+        assertThat(result).isEmpty();
+        verify(petUserAccessMapper, never()).toDomain(any());
+    }
 }

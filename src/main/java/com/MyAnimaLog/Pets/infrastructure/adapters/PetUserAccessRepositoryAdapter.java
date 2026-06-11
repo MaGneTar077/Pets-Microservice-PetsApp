@@ -47,4 +47,12 @@ public class PetUserAccessRepositoryAdapter implements PetUserAccessRepositoryPo
                 .map(petUserAccessMapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public List<PetUserAccess> findAllByPetId(UUID petId) {
+        return jpaPetUserAccessRepository.findAllByPetId(petId)
+                .stream()
+                .map(petUserAccessMapper::toDomain)
+                .toList();
+    }
 }

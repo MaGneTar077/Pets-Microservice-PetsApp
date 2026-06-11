@@ -11,4 +11,5 @@ public interface JpaPetUserAccessRepository extends JpaRepository<PetUserAccessE
     Optional<PetUserAccessEntity> findByPetIdAndUserId(UUID petId, UUID userId);
     void deleteByPetIdAndUserId(UUID petId, UUID userId);
     List<PetUserAccessEntity> findAllByUserId(UUID userId);
+    List<PetUserAccessEntity> findAllByPetId(UUID petId);
 }
