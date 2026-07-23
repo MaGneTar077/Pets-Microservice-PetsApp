@@ -1,6 +1,6 @@
 spring:
   application:
-    name: Pets
+    name: pet-service
 
   datasource:
     url: ${DB_URL}
@@ -24,6 +24,9 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
 
+  config:
+    import: optional:file:.env[.properties]
+
 server:
   port: ${SERVER_PORT:8081}
 
@@ -39,3 +42,10 @@ jwt:
 supabase:
   url: ${SUPABASE_URL}
   key: ${SUPABASE_KEY}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
