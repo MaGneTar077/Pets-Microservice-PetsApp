@@ -7,6 +7,7 @@ import com.MyAnimaLog.Pets.infrastructure.repositories.JpaPetRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,5 +43,12 @@ public class PetRepositoryAdapter implements PetRepositoryPort {
     @Override
     public void deleteById(UUID id) {
         jpaPetRepository.deleteById(id);
+    }
+
+    @Override
+    public List<Pet> findAllByOwnerId(UUID ownerId) {
+        return jpaPetRepository.findAllByOwnerId(ownerId).stream()
+                .map(petMapper::toDomain)
+                .toList();
     }
 }
