@@ -1,18 +1,22 @@
 package com.MyAnimaLog.Pets.application.services;
 
+import com.MyAnimaLog.Pets.application.dto.PetEvent;
 import com.MyAnimaLog.Pets.application.dto.UploadPetDocumentRequest;
 import com.MyAnimaLog.Pets.application.dto.UploadPetDocumentResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.in.UploadPetDocumentUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentStoragePort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.domain.exceptions.FileSizeExceededException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidFileException;
+import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -35,13 +39,14 @@ public class UploadPetDocumentService implements UploadPetDocumentUseCase {
     private final PetRepositoryPort petRepository;
     private final PetDocumentRepositoryPort documentRepository;
     private final PetDocumentStoragePort documentStorage;
+    private final PublishPetEventUseCase publishPetEventUseCase;
 
     @Override
     public UploadPetDocumentResponse execute(UploadPetDocumentRequest request) {
 
         validateFile(request.getFile());
 
-        petRepository.findById(request.getPetId())
+        Pet pet = petRepository.findById(request.getPetId())
                 .orElseThrow(() -> new NoSuchElementException(
                         "Pet not found with id: " + request.getPetId()));
 
@@ -64,6 +69,14 @@ public class UploadPetDocumentService implements UploadPetDocumentUseCase {
                 .build();
 
         PetDocument saved = documentRepository.save(document);
+
+        publishPetEventUseCase.publish(PetEvent.builder()
+                .petId(pet.getId())
+                .ownerId(pet.getOwnerId())
+                .petName(pet.getName())
+                .eventType("PET_DOCUMENT_UPLOADED")
+                .occurredAt(Instant.now())
+                .build());
 
         return toResponse(saved);
     }

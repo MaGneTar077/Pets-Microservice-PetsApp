@@ -1,7 +1,9 @@
 package com.MyAnimaLog.Pets.application.services;
 
+import com.MyAnimaLog.Pets.application.dto.PetEvent;
 import com.MyAnimaLog.Pets.application.dto.SendInvitationRequest;
 import com.MyAnimaLog.Pets.application.dto.SendInvitationResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.in.SendInvitationUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
@@ -14,6 +16,7 @@ import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -23,6 +26,7 @@ public class SendInvitationService implements SendInvitationUseCase {
 
     private final PetRepositoryPort petRepositoryPort;
     private final PetInvitationRepositoryPort petInvitationRepositoryPort;
+    private final PublishPetEventUseCase publishPetEventUseCase;
 
     @Override
     public SendInvitationResponse execute(SendInvitationRequest request) {
@@ -49,6 +53,14 @@ public class SendInvitationService implements SendInvitationUseCase {
                 .build();
 
         PetInvitation saved = petInvitationRepositoryPort.save(invitation);
+
+        publishPetEventUseCase.publish(PetEvent.builder()
+                .petId(pet.getId())
+                .ownerId(pet.getOwnerId())
+                .petName(pet.getName())
+                .eventType("PET_INVITATION_SENT")
+                .occurredAt(Instant.now())
+                .build());
 
         return SendInvitationResponse.builder()
                 .id(saved.getId())

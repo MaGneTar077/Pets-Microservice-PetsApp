@@ -1,13 +1,16 @@
 package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.AddPetRequest;
+import com.MyAnimaLog.Pets.application.dto.PetEvent;
 import com.MyAnimaLog.Pets.application.dto.PetResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.application.ports.in.AddPetUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Service
@@ -15,11 +18,23 @@ import java.time.LocalDateTime;
 public class PetService implements AddPetUseCase {
 
     private final PetRepositoryPort petRepositoryPort;
+    private final PublishPetEventUseCase publishPetEventUseCase;
 
     @Override
     public Pet addPet(Pet pet) {
         pet.setCreatedAt(LocalDateTime.now());
-        return petRepositoryPort.save(pet);
+        Pet saved = petRepositoryPort.save(pet);
+
+        publishPetEventUseCase.publish(PetEvent.builder()
+                .petId(saved.getId())
+                .ownerId(saved.getOwnerId())
+                .petName(saved.getName())
+                .eventType("PET_ADDED")
+                .occurredAt(Instant.now())
+                .build());
+
+
+        return saved;
     }
 
     public PetResponse add(AddPetRequest request) {
