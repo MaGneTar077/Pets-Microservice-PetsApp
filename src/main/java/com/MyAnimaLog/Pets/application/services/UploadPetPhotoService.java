@@ -1,7 +1,9 @@
 package com.MyAnimaLog.Pets.application.services;
 
+import com.MyAnimaLog.Pets.application.dto.PetEvent;
 import com.MyAnimaLog.Pets.application.dto.UploadPetPhotoRequest;
 import com.MyAnimaLog.Pets.application.dto.UploadPetPhotoResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.in.UploadPetPhotoUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetPhotoStoragePort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
@@ -12,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -28,6 +31,7 @@ public class UploadPetPhotoService implements UploadPetPhotoUseCase {
 
     private final PetRepositoryPort petRepository;
     private final PetPhotoStoragePort photoStorage;
+    private final PublishPetEventUseCase publishPetEventUseCase;
 
     @Override
     public UploadPetPhotoResponse execute(UploadPetPhotoRequest request) {
@@ -57,6 +61,14 @@ public class UploadPetPhotoService implements UploadPetPhotoUseCase {
                 .build();
 
         Pet saved = petRepository.save(updated);
+
+        publishPetEventUseCase.publish(PetEvent.builder()
+                .petId(saved.getId())
+                .ownerId(saved.getOwnerId())
+                .petName(saved.getName())
+                .eventType("PET_PHOTO_UPLOADED")
+                .occurredAt(Instant.now())
+                .build());
 
         return UploadPetPhotoResponse.builder()
                 .petId(saved.getId())

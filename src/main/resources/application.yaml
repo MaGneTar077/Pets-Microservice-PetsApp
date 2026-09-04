@@ -2,6 +2,12 @@ spring:
   application:
     name: pet-service
 
+  cloud:
+    gcp:
+      project-id: ${GCP_PROJECT_ID}
+      pubsub:
+        enabled: true
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -28,7 +34,7 @@ spring:
     import: optional:file:.env[.properties]
 
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${PORT:8081}
 
 springdoc:
   api-docs:

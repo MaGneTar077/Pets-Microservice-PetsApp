@@ -2,7 +2,9 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.EditPetRequest;
 import com.MyAnimaLog.Pets.application.dto.EditPetResponse;
+import com.MyAnimaLog.Pets.application.dto.PetEvent;
 import com.MyAnimaLog.Pets.application.ports.in.EditPetUseCase;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidPetDataException;
@@ -11,6 +13,7 @@ import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -18,9 +21,11 @@ import java.util.UUID;
 public class EditPetService  implements EditPetUseCase {
 
     private final PetRepositoryPort petRepository;
+    private final PublishPetEventUseCase publishPetEventUseCase;
 
-    public EditPetService(PetRepositoryPort petRepository) {
+    public EditPetService(PetRepositoryPort petRepository, PublishPetEventUseCase publishPetEventUseCase) {
         this.petRepository = petRepository;
+        this.publishPetEventUseCase = publishPetEventUseCase;
     }
 
     @Override
@@ -55,6 +60,14 @@ public class EditPetService  implements EditPetUseCase {
         pet.setUpdatedAt(LocalDateTime.now());
 
         Pet updatedPet = petRepository.save(pet);
+
+        publishPetEventUseCase.publish(PetEvent.builder()
+                .petId(updatedPet.getId())
+                .ownerId(updatedPet.getOwnerId())
+                .petName(updatedPet.getName())
+                .eventType("PET_EDITED")
+                .occurredAt(Instant.now())
+                .build());
 
         return mapToResponse(updatedPet);
     }
