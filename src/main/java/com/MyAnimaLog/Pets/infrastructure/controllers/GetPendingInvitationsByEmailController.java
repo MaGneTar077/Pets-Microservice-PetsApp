@@ -18,7 +18,12 @@ public class GetPendingInvitationsByEmailController {
 
     @GetMapping("/invitations/pending")
     public ResponseEntity<List<PetInvitationResponse>> getPendingInvitationsByEmail(
-            @RequestBody GetPendingInvitationsByEmailRequest request) {
+            @RequestHeader("X-User-Email") String email) {
+
+        GetPendingInvitationsByEmailRequest request =
+                GetPendingInvitationsByEmailRequest.builder()
+                        .email(email)
+                        .build();
 
         return ResponseEntity.ok(getPendingInvitationsByEmailUseCase.execute(request));
     }
