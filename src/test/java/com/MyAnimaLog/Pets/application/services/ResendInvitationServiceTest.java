@@ -2,6 +2,7 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.ResendInvitationRequest;
 import com.MyAnimaLog.Pets.application.dto.ResendInvitationResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
@@ -38,6 +39,9 @@ class ResendInvitationServiceTest {
 
     @Mock
     private PetInvitationRepositoryPort petInvitationRepositoryPort;
+
+    @Mock
+    private PublishPetEventUseCase publishPetEventUseCase;
 
     @InjectMocks
     private ResendInvitationService resendInvitationService;

@@ -2,6 +2,7 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.UploadPetDocumentRequest;
 import com.MyAnimaLog.Pets.application.dto.UploadPetDocumentResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentStoragePort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
@@ -40,6 +41,9 @@ class UploadPetDocumentServiceTest {
 
     @Mock
     private PetDocumentStoragePort documentStorage;
+
+    @Mock
+    private PublishPetEventUseCase publishPetEventUseCase;
 
     @InjectMocks
     private UploadPetDocumentService uploadPetDocumentService;

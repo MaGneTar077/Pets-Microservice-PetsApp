@@ -1,9 +1,10 @@
 package com.MyAnimaLog.Pets.infrastructure.controllers;
 
+import com.MyAnimaLog.Pets.application.dto.AuthenticatedUser;
 import com.MyAnimaLog.Pets.application.dto.IsOwnerRequest;
 import com.MyAnimaLog.Pets.application.dto.IsOwnerResponse;
 import com.MyAnimaLog.Pets.application.ports.in.IsOwnerUseCase;
-import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
+import com.MyAnimaLog.Pets.application.ports.out.AuthenticatedUserPort;
 import com.MyAnimaLog.Pets.infrastructure.config.GlobalExceptionHandler;
 import com.MyAnimaLog.Pets.infrastructure.config.SecurityConfig;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +43,9 @@ class IsOwnerControllerTest {
     @MockitoBean
     private IsOwnerUseCase isOwnerUseCase;
 
+    @MockitoBean
+    private AuthenticatedUserPort authenticatedUserPort;
+
     private UUID petId;
     private UUID userId;
 
@@ -49,6 +53,8 @@ class IsOwnerControllerTest {
     void setUp() {
         petId = UUID.randomUUID();
         userId = UUID.randomUUID();
+        when(authenticatedUserPort.current())
+                .thenReturn(new AuthenticatedUser(userId, "ana@correo.com", true));
     }
 
     @Test
@@ -74,13 +80,10 @@ class IsOwnerControllerTest {
     }
 
     @Test
-    void isOwner_shouldReturn404_whenPetNotFound() throws Exception {
-        when(isOwnerUseCase.execute(any(IsOwnerRequest.class)))
-                .thenThrow(new PetNotFoundException(petId));
-
-        mockMvc.perform(get("/pets/{petId}/owner/{userId}", petId, userId)
+    void isOwner_shouldReturn403_whenAskingAboutAnotherUser() throws Exception {
+        mockMvc.perform(get("/pets/{petId}/owner/{userId}", petId, UUID.randomUUID())
                         .with(csrf()))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").exists());
     }
 }

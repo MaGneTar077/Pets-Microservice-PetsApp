@@ -2,11 +2,15 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.RejectInvitationRequest;
 import com.MyAnimaLog.Pets.application.dto.RejectInvitationResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
+import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
+import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationAlreadyProcessedException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationNotFoundException;
+import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,12 +33,19 @@ class RejectInvitationServiceTest {
     @Mock
     private PetInvitationRepositoryPort petInvitationRepositoryPort;
 
+    @Mock
+    private PetRepositoryPort petRepositoryPort;
+
+    @Mock
+    private PublishPetEventUseCase publishPetEventUseCase;
+
     @InjectMocks
     private RejectInvitationService rejectInvitationService;
 
     private UUID petId;
     private String token;
     private PetInvitation invitation;
+    private Pet pet;
 
     @BeforeEach
     void setUp() {
@@ -51,12 +62,21 @@ class RejectInvitationServiceTest {
                 .expiresAt(LocalDateTime.now().plusDays(7))
                 .createdAt(LocalDateTime.now())
                 .build();
+
+        pet = Pet.builder()
+                .id(petId)
+                .ownerId(UUID.randomUUID())
+                .name("Firulais")
+                .species("Perro")
+                .sex(Sex.MALE)
+                .build();
     }
 
     @Test
     void execute_shouldReturnResponse_whenRequestIsValid() {
         when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
         when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(invitation);
+        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
 
         RejectInvitationRequest request = RejectInvitationRequest.builder()
                 .token(token).build();
@@ -73,6 +93,7 @@ class RejectInvitationServiceTest {
     void execute_shouldCallRepositorySave_once() {
         when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
         when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(invitation);
+        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
 
         RejectInvitationRequest request = RejectInvitationRequest.builder()
                 .token(token).build();

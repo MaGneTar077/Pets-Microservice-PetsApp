@@ -2,13 +2,17 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.AcceptInvitationRequest;
 import com.MyAnimaLog.Pets.application.dto.AcceptInvitationResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
+import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
+import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.AccessAlreadyGrantedException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationAlreadyProcessedException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationNotFoundException;
+import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import com.MyAnimaLog.Pets.domain.model.PetUserAccess;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +39,12 @@ class AcceptInvitationServiceTest {
     @Mock
     private PetUserAccessRepositoryPort petUserAccessRepositoryPort;
 
+    @Mock
+    private PetRepositoryPort petRepositoryPort;
+
+    @Mock
+    private PublishPetEventUseCase publishPetEventUseCase;
+
     @InjectMocks
     private AcceptInvitationService acceptInvitationService;
 
@@ -42,6 +52,7 @@ class AcceptInvitationServiceTest {
     private UUID userId;
     private String token;
     private PetInvitation invitation;
+    private Pet pet;
 
     @BeforeEach
     void setUp() {
@@ -59,6 +70,14 @@ class AcceptInvitationServiceTest {
                 .expiresAt(LocalDateTime.now().plusDays(7))
                 .createdAt(LocalDateTime.now())
                 .build();
+
+        pet = Pet.builder()
+                .id(petId)
+                .ownerId(UUID.randomUUID())
+                .name("Firulais")
+                .species("Perro")
+                .sex(Sex.MALE)
+                .build();
     }
 
     @Test
@@ -69,6 +88,7 @@ class AcceptInvitationServiceTest {
         when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(PetUserAccess.builder()
                 .id(UUID.randomUUID()).petId(petId).userId(userId)
                 .accessRole(Rol.EDITOR).createdAt(LocalDateTime.now()).build());
+        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
 
         AcceptInvitationRequest request = AcceptInvitationRequest.builder()
                 .token(token).userId(userId).build();
@@ -88,6 +108,7 @@ class AcceptInvitationServiceTest {
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, userId)).thenReturn(Optional.empty());
         when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(invitation);
         when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(mock(PetUserAccess.class));
+        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
 
         AcceptInvitationRequest request = AcceptInvitationRequest.builder()
                 .token(token).userId(userId).build();
@@ -103,6 +124,7 @@ class AcceptInvitationServiceTest {
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, userId)).thenReturn(Optional.empty());
         when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(invitation);
         when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(mock(PetUserAccess.class));
+        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
 
         AcceptInvitationRequest request = AcceptInvitationRequest.builder()
                 .token(token).userId(userId).build();

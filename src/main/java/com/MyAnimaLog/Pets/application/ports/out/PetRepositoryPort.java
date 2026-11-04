@@ -10,6 +10,8 @@ public interface PetRepositoryPort {
     Pet save(Pet pet);
     Optional<Pet> findById(UUID id);
     Optional<Pet> findByIdAndOwnerId(UUID petId, UUID ownerId);
+    boolean existsByIdAndOwnerId(UUID petId, UUID ownerId);
     List<Pet> findAllByOwnerId(UUID ownerId);
+    List<Pet> findAllByIds(List<UUID> ids);
     void deleteById(UUID id);
 }

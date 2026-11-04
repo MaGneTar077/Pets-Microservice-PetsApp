@@ -41,6 +41,18 @@ public class PetRepositoryAdapter implements PetRepositoryPort {
     }
 
     @Override
+    public boolean existsByIdAndOwnerId(UUID petId, UUID ownerId) {
+        return jpaPetRepository.existsByIdAndOwnerId(petId, ownerId);
+    }
+
+    @Override
+    public List<Pet> findAllByIds(List<UUID> ids) {
+        return jpaPetRepository.findAllById(ids).stream()
+                .map(petMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public void deleteById(UUID id) {
         jpaPetRepository.deleteById(id);
     }

@@ -1,8 +1,10 @@
 package com.MyAnimaLog.Pets.infrastructure.controllers;
 
+import com.MyAnimaLog.Pets.application.dto.AuthenticatedUser;
 import com.MyAnimaLog.Pets.application.dto.HasPermissionRequest;
 import com.MyAnimaLog.Pets.application.dto.HasPermissionResponse;
 import com.MyAnimaLog.Pets.application.ports.in.HasPermissionUseCase;
+import com.MyAnimaLog.Pets.application.ports.out.AuthenticatedUserPort;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.infrastructure.config.GlobalExceptionHandler;
 import com.MyAnimaLog.Pets.infrastructure.config.SecurityConfig;
@@ -42,6 +44,9 @@ class HasPermissionControllerTest {
     @MockitoBean
     private HasPermissionUseCase hasPermissionUseCase;
 
+    @MockitoBean
+    private AuthenticatedUserPort authenticatedUserPort;
+
     private UUID petId;
     private UUID userId;
 
@@ -49,6 +54,8 @@ class HasPermissionControllerTest {
     void setUp() {
         petId = UUID.randomUUID();
         userId = UUID.randomUUID();
+        when(authenticatedUserPort.current())
+                .thenReturn(new AuthenticatedUser(userId, "ana@correo.com", true));
     }
 
     @Test
@@ -81,5 +88,13 @@ class HasPermissionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.hasPermission").value(false))
                 .andExpect(jsonPath("$.role").doesNotExist());
+    }
+
+    @Test
+    void hasPermission_shouldReturn403_whenAskingAboutAnotherUser() throws Exception {
+        mockMvc.perform(get("/pets/{petId}/access/{userId}", petId, UUID.randomUUID())
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").exists());
     }
 }
