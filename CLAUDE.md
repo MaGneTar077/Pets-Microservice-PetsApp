@@ -39,7 +39,10 @@ The app loads env vars from an optional `.env` file at the project root (`spring
 | Variable | Purpose |
 |---|---|
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection (Hikari, isolation level READ COMMITTED, `ddl-auto: none` — schema is managed outside the app, no Flyway/Liquibase in the repo) |
-| `JWT_SECRET` | Configured for `jjwt`, but **not currently wired into any filter** (see Security below) |
+| `JWT_JWKS_URI` | JWKS of the User service (`{USER_SERVICE_URL}/.well-known/jwks.json`). **The app refuses to start without it** |
+| `JWT_ISSUER` | Expected `iss`, default `myanimalog-user-service` |
+| `JWT_AUDIENCE` | Expected `aud`, default `myanimalog-api` |
+| `INTERNAL_API_KEY` | Shared secret for `/internal/**` (`X-Internal-Api-Key`). **The app refuses to start if missing or blank** |
 | `SUPABASE_URL`, `SUPABASE_KEY` | Supabase Storage REST API, used for pet photos/documents |
 | `GCP_PROJECT_ID` | Google Cloud project for Pub/Sub event publishing |
 | `PORT` (default `8081`) | HTTP port |
@@ -57,7 +60,7 @@ Hexagonal / ports-and-adapters, under `src/main/java/com/MyAnimaLog/Pets/`:
   - `exceptions/`: one class per business rule violation (e.g. `PetNotBelongsToOwnerException`, `CannotGrantAccessToOwnerException`, `InvitationAlreadyProcessedException`), all caught centrally.
 - **`application/`**:
   - `ports/in/` — one `*UseCase` interface per operation.
-  - `ports/out/` — outbound interfaces: `PetRepositoryPort`, `PetDocumentRepositoryPort`, `PetInvitationRepositoryPort`, `PetUserAccessRepositoryPort`, `PetPhotoStoragePort`, `PetDocumentStoragePort`, `EventPublisherPort`.
+  - `ports/out/` — outbound interfaces: `PetRepositoryPort`, `PetDocumentRepositoryPort`, `PetInvitationRepositoryPort`, `PetUserAccessRepositoryPort`, `PetPhotoStoragePort`, `PetDocumentStoragePort`, `EventPublisherPort`, `AuthenticatedUserPort`.
   - `services/` — one `*Service` per use case, depending only on `ports/out`. **Exceptions to the 1:1 naming**: pet creation is implemented by `PetService` (implements `AddPetUseCase`, also exposes `add(AddPetRequest)` called directly by `AddPetController`), and event publishing is centralized in `PublishPetEventService` (implements `PublishPetEventUseCase`, delegates to `EventPublisherPort`) which every mutating service injects to emit a `PetEvent`.
   - `dto/` — request/response classes per operation, plus `PetEvent` (`petId`, `ownerId`, `petName`, `eventType`, `occurredAt`).
 - **`infrastructure/`**:
@@ -66,15 +69,40 @@ Hexagonal / ports-and-adapters, under `src/main/java/com/MyAnimaLog/Pets/`:
   - `repositories/` — Spring Data JPA repos (`JpaPetRepository`, etc.), only used by adapters.
   - `entity/` + `mapper/` — JPA `@Entity` classes (tables `pets`, `pet_documents`, `pet_invitations`, `pet_user_access`) and domain↔entity mappers.
   - `config/` — `SecurityConfig`, `SupabaseConfig` (URL/key + `RestTemplate` bean), `GlobalExceptionHandler` (`@RestControllerAdvice`).
+  - `security/` — `InternalApiKeyFilter`, `JwtClaimsConverter`, `JwtTokenValidator`, `RestAuthenticationEntryPoint`, `RestAccessDeniedHandler`, `SecurityErrorResponseWriter` (see Security below). `SecurityConfig` stays in `config/` because ~30 controller tests exclude it by that type.
 
 **Convention when adding a new operation**: create matching `<Verb><Noun>UseCase` / `<Verb><Noun>Service` / `<Verb><Noun>Controller` / `<Verb><Noun>Request`+`Response`, wire a new domain exception if it's a new business rule, and add the matching `@ExceptionHandler` in `GlobalExceptionHandler`.
 
-### Security status (important, mid-transition)
+### Security (PETS-01, done)
 
-`SecurityConfig` currently does `csrf().disable()` + `anyRequest().permitAll()` — **no authentication/authorization is enforced by Spring Security**, despite `jjwt` and `JWT_SECRET` being configured (likely reserved for future use or shared from a template). Callers (an API gateway or the frontend/BFF) are trusted to pass identity explicitly:
-- `ownerId` / `userId` / `uploadedBy` / `targetUserId` are passed as request body fields or query params (e.g. `GrantAccessRequest.ownerId`, `UploadPetPhotoController`'s `@RequestParam UUID ownerId`), not derived from a token.
-- Services then do their own authorization checks in code, e.g. `if (!pet.getOwnerId().equals(request.getOwnerId())) throw new UnauthorizedPetAccessException();`.
-- Recent commits (`fix(invitations): corrige rutas y valida la identidad...`, `fix: add user email in pending invitation by email`) are actively reworking the invitation endpoints' routes and identity handling — treat this area as in flux when touching invitation code.
+Two independent authentication mechanisms, wired in `infrastructure/config/SecurityConfig.java` with the supporting classes in `infrastructure/security/`:
+
+1. **User JWT (RS256 via JWKS)** for every route except the public ones. `JwtDecoder` is built from `app.security.jwks-uri` and validates signature plus `iss`/`aud` through `JwtTokenValidator`. `JwtClaimsConverter` deliberately grants **no** authorities, so no token claim can ever satisfy `INTERNAL_SERVICE`. Vet-role authorities arrive in PETS-03.
+2. **`X-Internal-Api-Key`** for `/internal/**`, handled by `InternalApiKeyFilter` (constant-time `MessageDigest.isEqual`, configured key is `trim()`ed). `/internal/**` does **not** accept user JWTs, and a user JWT cannot reach it. The filter is instantiated directly in `SecurityConfig` rather than being a `@Component`, so Spring Boot does not also register it as a servlet filter outside the security chain.
+
+Public routes are only Swagger (`/swagger-ui/**`, `/swagger-ui.html`, `/api-docs/**`) and actuator `health`/`info`; `anyRequest().authenticated()`.
+
+**Fail-fast**: a blank/missing `INTERNAL_API_KEY` or `JWT_JWKS_URI` throws `IllegalStateException` while building the chain, so the app does not start. A blank key would otherwise match an empty header and open `/internal/**`.
+
+401/403 are rendered as JSON `{"error": "..."}` by `RestAuthenticationEntryPoint` / `RestAccessDeniedHandler` (never Spring's default page), matching `GlobalExceptionHandler`'s format.
+
+`AuthenticatedUserPort` (`application/ports/out`) exposes `sub`, `email` and `email_verified` from the token through `SpringAuthenticatedUserAdapter`; `AuthenticatedUser` is the DTO. `jjwt`/`JWT_SECRET` were removed (nothing used them).
+
+**Still mid-transition (PETS-02 will fix)**: identity is *also* still passed explicitly in bodies/query params — `ownerId` / `userId` / `uploadedBy` / `targetUserId` (e.g. `GrantAccessRequest.ownerId`, `UploadPetPhotoController`'s `@RequestParam UUID ownerId`). Services do their own checks in code, e.g. `if (!pet.getOwnerId().equals(request.getOwnerId())) throw new UnauthorizedPetAccessException();`. PETS-01 only added the requirement of a valid token; it did **not** start deriving identity from `sub`. Treat invitation code as in flux.
+
+### Internal endpoints (PETS-04, done)
+
+Under `/internal/pets`, only reachable with `X-Internal-Api-Key`, never exposed through the gateway. Consumed by Medical and Veterinary.
+
+| Method | Route | Response |
+|---|---|---|
+| GET | `/internal/pets/{petId}/owner/{userId}` | `200 {"isOwner": bool}` — a nonexistent pet returns `false`, **never 404** (Medical treats any non-2xx as the service being down) |
+| POST | `/internal/pets/batch` | body `{"ids": [...]}`, max 100 (more → 400, empty → `200 []`); returns an **array**, silently omitting ids that don't exist |
+
+- `InternalIsOwnerResponse` is a `record` on purpose: Lombok would serialize the field as `owner`, and Medical's contract needs exactly `isOwner`. The public alias still returns `owner`.
+- `IsOwnerService` uses a single `existsByIdAndOwnerId` query (primary-key index, no exception flow) to stay well inside Medical's 3 s budget. Batch uses one `findAllById`, no N+1.
+- **PETS-05 columns don't exist yet** (`claim_status`, `created_by_veterinary_id`, `owner_contact_*`), so the batch response hardcodes `claimStatus: "NONE"`, `createdByVeterinaryId: null`, `ownerContact: null`. When PETS-05 lands: populate them, send `ownerContact` only when `claimStatus = UNCLAIMED`, and make `IsOwnerService` return `false` for `UNCLAIMED` pets.
+- The former public `IsOwner` / `HasPermission` routes (`GET /pets/{petId}/owner/{userId}`, `GET /pets/{petId}/access/{userId}`) remain as `@Deprecated` aliases: they now require a token **and** only answer when `{userId}` equals the token's `sub` (otherwise 403), so they no longer leak other users' relationships. See `docs/integracion/PETS_CAMBIOS_PARA_FRONTEND.md`.
 
 ### Domain model & business flows
 
@@ -116,7 +144,9 @@ If `eventType` has no entry in that map, the event is **silently dropped** (only
 
 ### Error handling
 
-`GlobalExceptionHandler` maps every domain exception to a specific HTTP status (404 not-found, 403 forbidden/unauthorized, 400 bad request, 409 conflict, 422 unprocessable, 413 payload too large, 415 unsupported media type), plus `MethodArgumentNotValidException` → 400 with field errors, and a catch-all `Exception` → 500. When introducing a new business rule, add a dedicated exception class under `domain/exceptions/` and a matching handler here rather than reusing an existing one.
+`GlobalExceptionHandler` maps every domain exception to a specific HTTP status (404 not-found, 403 forbidden/unauthorized, 401 unauthenticated, 400 bad request, 409 conflict, 422 unprocessable, 413 payload too large, 415 unsupported media type), plus `MethodArgumentNotValidException` → 400 with field errors, and a catch-all `Exception` → 500 that logs the detail but only returns `"Error interno del servidor"` (never SQL or stack traces).
+
+Client-side mistakes must not surface as 500s: `NoResourceFoundException`/`NoHandlerFoundException` → **404** (an unmapped route used to return 500, which made Medical read it as an outage), `HttpRequestMethodNotSupportedException` → 405, `HttpMessageNotReadableException` → 400, `MethodArgumentTypeMismatchException` (malformed UUID in the path) → 400. Note that because `anyRequest().authenticated()` runs first, an *unauthenticated* request to an unknown route returns 401, not 404. When introducing a new business rule, add a dedicated exception class under `domain/exceptions/` and a matching handler here rather than reusing an existing one.
 
 ## Testing conventions
 
