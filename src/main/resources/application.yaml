@@ -33,6 +33,16 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
+app:
+  security:
+    # Namespace propio en lugar de spring.security.oauth2.resourceserver.*: así el autoconfig de
+    # Boot no intenta construir su propio JwtDecoder y el único que existe es el de SecurityConfig,
+    # que es el que valida iss y aud.
+    jwks-uri: ${JWT_JWKS_URI:}               # {USER_SERVICE_URL}/.well-known/jwks.json
+    issuer: ${JWT_ISSUER:myanimalog-user-service}
+    audience: ${JWT_AUDIENCE:myanimalog-api}
+    internal-api-key: ${INTERNAL_API_KEY:}
+
 server:
   port: ${PORT:8081}
 
@@ -41,9 +51,6 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
-
-jwt:
-  secret: ${JWT_SECRET}
 
 supabase:
   url: ${SUPABASE_URL}
