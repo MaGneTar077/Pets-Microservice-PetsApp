@@ -3,9 +3,6 @@ package com.MyAnimaLog.Pets.application.services;
 import com.MyAnimaLog.Pets.application.dto.IsOwnerRequest;
 import com.MyAnimaLog.Pets.application.dto.IsOwnerResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
-import com.MyAnimaLog.Pets.domain.enums.Sex;
-import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
-import com.MyAnimaLog.Pets.domain.model.Pet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,9 +10,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -32,34 +26,18 @@ class IsOwnerServiceTest {
 
     private UUID petId;
     private UUID ownerId;
-    private Pet pet;
 
     @BeforeEach
     void setUp() {
         petId = UUID.randomUUID();
         ownerId = UUID.randomUUID();
-
-        pet = Pet.builder()
-                .id(petId)
-                .ownerId(ownerId)
-                .name("Firulais")
-                .species("Perro")
-                .sex(Sex.MALE)
-                .birthDate(LocalDate.of(2022, 1, 15))
-                .createdAt(LocalDateTime.now())
-                .build();
     }
 
     @Test
     void execute_shouldReturnIsOwnerTrue_whenUserIsOwner() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petRepositoryPort.existsByIdAndOwnerId(petId, ownerId)).thenReturn(true);
 
-        IsOwnerRequest request = IsOwnerRequest.builder()
-                .petId(petId)
-                .userId(ownerId)
-                .build();
-
-        IsOwnerResponse result = isOwnerService.execute(request);
+        IsOwnerResponse result = isOwnerService.execute(requestFor(ownerId));
 
         assertThat(result).isNotNull();
         assertThat(result.isOwner()).isTrue();
@@ -68,43 +46,37 @@ class IsOwnerServiceTest {
     @Test
     void execute_shouldReturnIsOwnerFalse_whenUserIsNotOwner() {
         UUID otherUser = UUID.randomUUID();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petRepositoryPort.existsByIdAndOwnerId(petId, otherUser)).thenReturn(false);
 
-        IsOwnerRequest request = IsOwnerRequest.builder()
-                .petId(petId)
-                .userId(otherUser)
-                .build();
-
-        IsOwnerResponse result = isOwnerService.execute(request);
+        IsOwnerResponse result = isOwnerService.execute(requestFor(otherUser));
 
         assertThat(result).isNotNull();
         assertThat(result.isOwner()).isFalse();
     }
 
     @Test
-    void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
+    void execute_shouldReturnIsOwnerFalse_whenPetDoesNotExist() {
+        when(petRepositoryPort.existsByIdAndOwnerId(petId, ownerId)).thenReturn(false);
 
-        IsOwnerRequest request = IsOwnerRequest.builder()
-                .petId(petId)
-                .userId(ownerId)
-                .build();
+        IsOwnerResponse result = isOwnerService.execute(requestFor(ownerId));
 
-        assertThatThrownBy(() -> isOwnerService.execute(request))
-                .isInstanceOf(PetNotFoundException.class);
+        assertThat(result.isOwner()).isFalse();
     }
 
     @Test
-    void execute_shouldCallRepositoryFindById_once() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldQueryRepository_onlyOnce() {
+        when(petRepositoryPort.existsByIdAndOwnerId(petId, ownerId)).thenReturn(true);
 
-        IsOwnerRequest request = IsOwnerRequest.builder()
+        isOwnerService.execute(requestFor(ownerId));
+
+        verify(petRepositoryPort, times(1)).existsByIdAndOwnerId(petId, ownerId);
+        verifyNoMoreInteractions(petRepositoryPort);
+    }
+
+    private IsOwnerRequest requestFor(UUID userId) {
+        return IsOwnerRequest.builder()
                 .petId(petId)
-                .userId(ownerId)
+                .userId(userId)
                 .build();
-
-        isOwnerService.execute(request);
-
-        verify(petRepositoryPort, times(1)).findById(petId);
     }
 }

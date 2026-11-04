@@ -8,4 +8,5 @@ import java.util.UUID;
 
 public interface JpaPetRepository extends JpaRepository<PetEntity, UUID> {
     List<PetEntity> findAllByOwnerId(UUID ownerId);
+    boolean existsByIdAndOwnerId(UUID id, UUID ownerId);
 }
