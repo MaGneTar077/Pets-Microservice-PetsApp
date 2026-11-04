@@ -2,6 +2,7 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.UploadPetPhotoRequest;
 import com.MyAnimaLog.Pets.application.dto.UploadPetPhotoResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetPhotoStoragePort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
@@ -34,6 +35,9 @@ class UploadPetPhotoServiceTest {
 
     @Mock
     private PetPhotoStoragePort photoStorage;
+
+    @Mock
+    private PublishPetEventUseCase publishPetEventUseCase;
 
     @InjectMocks
     private UploadPetPhotoService uploadPetPhotoService;

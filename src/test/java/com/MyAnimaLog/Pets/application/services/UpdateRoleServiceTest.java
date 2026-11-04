@@ -3,6 +3,7 @@ package com.MyAnimaLog.Pets.application.services;
 import com.MyAnimaLog.Pets.application.dto.UpdateRoleRequest;
 import com.MyAnimaLog.Pets.application.dto.UpdateRoleResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
@@ -35,6 +36,9 @@ class UpdateRoleServiceTest {
 
     @Mock
     private PetUserAccessRepositoryPort petUserAccessRepositoryPort;
+
+    @Mock
+    private PublishPetEventUseCase publishPetEventUseCase;
 
     @InjectMocks
     private UpdateRoleService updateRoleService;

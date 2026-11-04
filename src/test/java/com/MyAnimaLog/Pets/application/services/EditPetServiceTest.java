@@ -2,6 +2,7 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.EditPetRequest;
 import com.MyAnimaLog.Pets.application.dto.EditPetResponse;
+import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidPetDataException;
@@ -27,6 +28,9 @@ class EditPetServiceTest {
 
     @Mock
     private PetRepositoryPort petRepository;
+
+    @Mock
+    private PublishPetEventUseCase publishPetEventUseCase;
 
     @InjectMocks
     private EditPetService editPetService;
