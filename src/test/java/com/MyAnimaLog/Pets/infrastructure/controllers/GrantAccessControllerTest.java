@@ -131,7 +131,8 @@ class GrantAccessControllerTest {
                         .content(buildBody(ownerId, ownerId, "EDITOR"))
                         .with(csrf()))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").exists());
+                .andExpect(jsonPath("$.error").exists())
+                .andExpect(jsonPath("$.code").value("CANNOT_SHARE_WITH_OWNER"));
     }
 
     @Test
@@ -144,6 +145,7 @@ class GrantAccessControllerTest {
                         .content(buildBody(ownerId, targetUserId, "EDITOR"))
                         .with(csrf()))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").exists());
+                .andExpect(jsonPath("$.error").exists())
+                .andExpect(jsonPath("$.code").value("ACCESS_ALREADY_GRANTED"));
     }
 }

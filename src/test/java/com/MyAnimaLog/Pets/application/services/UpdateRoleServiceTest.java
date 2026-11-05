@@ -8,6 +8,7 @@ import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.AccessNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.CannotGrantAccessToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
@@ -150,6 +151,19 @@ class UpdateRoleServiceTest {
 
         assertThatThrownBy(() -> updateRoleService.execute(request))
                 .isInstanceOf(IdentityMismatchException.class);
+
+        verify(petUserAccessRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrow400_whenTargetIsTheOwner() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
+
+        UpdateRoleRequest request = UpdateRoleRequest.builder()
+                .petId(petId).ownerId(ownerId).targetUserId(ownerId).newRole(Rol.VIEWER).build();
+
+        assertThatThrownBy(() -> updateRoleService.execute(request))
+                .isInstanceOf(CannotGrantAccessToOwnerException.class);
 
         verify(petUserAccessRepositoryPort, never()).save(any());
     }

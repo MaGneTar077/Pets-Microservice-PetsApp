@@ -152,12 +152,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(CannotGrantAccessToOwnerException.class)
     public ResponseEntity<Map<String, String>> handleCannotGrantAccessToOwner(CannotGrantAccessToOwnerException ex) {
-        return buildError(HttpStatus.BAD_REQUEST, ex.getMessage());
+        return buildError(HttpStatus.BAD_REQUEST, ex.getMessage(), "CANNOT_SHARE_WITH_OWNER");
     }
 
     @ExceptionHandler(AccessAlreadyGrantedException.class)
     public ResponseEntity<Map<String, String>> handleAccessAlreadyGranted(AccessAlreadyGrantedException ex) {
-        return buildError(HttpStatus.CONFLICT, ex.getMessage());
+        return buildError(HttpStatus.CONFLICT, ex.getMessage(), "ACCESS_ALREADY_GRANTED");
     }
 
     @ExceptionHandler(AccessNotFoundException.class)
