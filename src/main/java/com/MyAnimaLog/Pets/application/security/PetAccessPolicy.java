@@ -3,6 +3,7 @@ package com.MyAnimaLog.Pets.application.security;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
 import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
@@ -46,7 +47,19 @@ public class PetAccessPolicy {
 
     /** Solo el dueño. Para borrar la mascota, compartir, cambiar roles, invitar y ver compartidos. */
     public Pet requireOwner(UUID petId) {
+        return requireOwner(petId, null);
+    }
+
+    /**
+     * Igual que {@link #requireOwner(UUID)}, validando además el {@code ownerId} heredado que
+     * algunos endpoints todavía reciben por body/query (PETS-02): se acepta si coincide con el
+     * token o con el dueño real de la mascota (la app vieja mandaba este segundo valor); si no
+     * coincide con ninguno de los dos, 403 {@code IDENTITY_MISMATCH}. No otorga permisos por sí
+     * solo — sigue exigiendo ser dueño.
+     */
+    public Pet requireOwner(UUID petId, UUID legacyOwnerId) {
         Pet pet = loadPet(petId);
+        validateLegacyOwnerId(pet, legacyOwnerId);
         if (!isOwner(pet)) {
             throw new PetNotBelongsToOwnerException();
         }
@@ -55,7 +68,13 @@ public class PetAccessPolicy {
 
     /** Dueño o {@code EDITOR}. Para editar la mascota, la foto y subir documentos. */
     public Pet requireWrite(UUID petId) {
+        return requireWrite(petId, null);
+    }
+
+    /** Igual que {@link #requireWrite(UUID)}, validando el {@code ownerId} heredado como en {@link #requireOwner(UUID, UUID)}. */
+    public Pet requireWrite(UUID petId, UUID legacyOwnerId) {
         Pet pet = loadPet(petId);
+        validateLegacyOwnerId(pet, legacyOwnerId);
         boolean canWrite = resolve(pet)
                 .filter(role -> role == Rol.OWNER || role == Rol.EDITOR)
                 .isPresent();
@@ -67,7 +86,13 @@ public class PetAccessPolicy {
 
     /** Dueño, {@code EDITOR} o {@code VIEWER}. Para cualquier lectura. */
     public Pet requireRead(UUID petId) {
+        return requireRead(petId, null);
+    }
+
+    /** Igual que {@link #requireRead(UUID)}, validando el {@code ownerId} heredado como en {@link #requireOwner(UUID, UUID)}. */
+    public Pet requireRead(UUID petId, UUID legacyOwnerId) {
         Pet pet = loadPet(petId);
+        validateLegacyOwnerId(pet, legacyOwnerId);
         if (resolve(pet).isEmpty()) {
             throw new UnauthorizedPetAccessException("You do not have access to this pet");
         }
@@ -95,6 +120,25 @@ public class PetAccessPolicy {
     /** {@code Objects.equals} porque PETS-05 hará {@code owner_id} nullable (mascotas de clínica). */
     private boolean isOwner(Pet pet) {
         return Objects.equals(pet.getOwnerId(), currentUserIdentity.userId());
+    }
+
+    /**
+     * Regla de compatibilidad para endpoints de UNA mascota concreta (PETS-02): {@code legacyOwnerId}
+     * ausente → nada que validar; igual al token o igual al dueño real de la mascota → se acepta
+     * (ninguno de los dos casos otorga permisos, {@link #resolve(Pet)} sigue decidiendo eso);
+     * cualquier otro valor → 403.
+     */
+    private void validateLegacyOwnerId(Pet pet, UUID legacyOwnerId) {
+        if (legacyOwnerId == null) {
+            return;
+        }
+        if (legacyOwnerId.equals(currentUserIdentity.userId())) {
+            return;
+        }
+        if (Objects.equals(legacyOwnerId, pet.getOwnerId())) {
+            return;
+        }
+        throw new IdentityMismatchException();
     }
 
     private Pet loadPet(UUID petId) {

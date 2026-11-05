@@ -4,7 +4,6 @@ import com.MyAnimaLog.Pets.application.dto.EditPetRequest;
 import com.MyAnimaLog.Pets.application.dto.EditPetResponse;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
-import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
@@ -34,9 +33,6 @@ class EditPetServiceTest {
 
     @Mock
     private PublishPetEventUseCase publishPetEventUseCase;
-
-    @Mock
-    private CurrentUserIdentity currentUserIdentity;
 
     @Mock
     private PetAccessPolicy petAccessPolicy;
@@ -69,7 +65,7 @@ class EditPetServiceTest {
         request.setName("Firulais Editado");
         request.setWeight(15.0);
 
-        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
         when(petRepository.save(any(Pet.class))).thenReturn(pet);
 
         EditPetResponse response = editPetService.editPet(petId, ownerId, request);
@@ -81,18 +77,17 @@ class EditPetServiceTest {
 
     @Test
     void editPet_shouldWork_whenTheRequestDoesNotSendOwnerId() {
-        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
+        when(petAccessPolicy.requireWrite(petId, null)).thenReturn(pet);
         when(petRepository.save(any(Pet.class))).thenReturn(pet);
 
         editPetService.editPet(petId, null, new EditPetRequest());
 
-        verify(currentUserIdentity).resolveUserId(null);
         verify(petRepository).save(any(Pet.class));
     }
 
     @Test
     void editPet_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petAccessPolicy.requireWrite(petId)).thenThrow(new PetNotFoundException(petId));
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() -> editPetService.editPet(petId, ownerId, new EditPetRequest()))
                 .isInstanceOf(PetNotFoundException.class);
@@ -101,7 +96,7 @@ class EditPetServiceTest {
     /** Un VIEWER o un extraño no pueden editar: lo decide la política, no el ownerId del request. */
     @Test
     void editPet_shouldThrow403_whenCallerHasNoWriteAccess() {
-        when(petAccessPolicy.requireWrite(petId)).thenThrow(new UnauthorizedPetAccessException());
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenThrow(new UnauthorizedPetAccessException());
 
         assertThatThrownBy(() -> editPetService.editPet(petId, ownerId, new EditPetRequest()))
                 .isInstanceOf(UnauthorizedPetAccessException.class);
@@ -110,15 +105,35 @@ class EditPetServiceTest {
     }
 
     @Test
-    void editPet_shouldThrow403_whenTheRequestSendsAnotherOwnerId() {
-        UUID otherOwner = UUID.randomUUID();
-        when(currentUserIdentity.resolveUserId(otherOwner)).thenThrow(new IdentityMismatchException());
+    void editPet_shouldThrow403_whenTheRequestSendsAnUnrelatedOwnerId() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireWrite(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
 
-        assertThatThrownBy(() -> editPetService.editPet(petId, otherOwner, new EditPetRequest()))
+        assertThatThrownBy(() -> editPetService.editPet(petId, unrelatedOwner, new EditPetRequest()))
                 .isInstanceOf(IdentityMismatchException.class);
 
-        verifyNoInteractions(petAccessPolicy);
         verify(petRepository, never()).save(any(Pet.class));
+    }
+
+    /**
+     * La app vieja mandaba el ownerId real de la mascota para que un EDITOR pudiera editar: eso
+     * sigue aceptándose, sin dar permisos extra (la política decide con el token).
+     */
+    @Test
+    void editPet_shouldSucceed_whenEditorSendsTheRealOwnerId() {
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
+        when(petRepository.save(any(Pet.class))).thenReturn(pet);
+
+        assertThatNoException().isThrownBy(() ->
+                editPetService.editPet(petId, ownerId, new EditPetRequest()));
+    }
+
+    @Test
+    void editPet_shouldThrow403_whenViewerSendsTheRealOwnerId() {
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenThrow(new UnauthorizedPetAccessException());
+
+        assertThatThrownBy(() -> editPetService.editPet(petId, ownerId, new EditPetRequest()))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
     }
 
     @Test
@@ -126,7 +141,7 @@ class EditPetServiceTest {
         EditPetRequest request = new EditPetRequest();
         request.setWeight(-10.0);
 
-        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
 
         assertThatThrownBy(() -> editPetService.editPet(petId, ownerId, request))
                 .isInstanceOf(InvalidPetDataException.class);
@@ -134,7 +149,7 @@ class EditPetServiceTest {
 
     @Test
     void editPet_shouldCallSave_once() {
-        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
         when(petRepository.save(any(Pet.class))).thenReturn(pet);
 
         editPetService.editPet(petId, ownerId, new EditPetRequest());

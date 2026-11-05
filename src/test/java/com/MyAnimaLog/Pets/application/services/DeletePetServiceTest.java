@@ -1,7 +1,6 @@
 package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
-import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
@@ -27,9 +26,6 @@ class DeletePetServiceTest {
 
     @Mock
     private PetRepositoryPort petRepository;
-
-    @Mock
-    private CurrentUserIdentity currentUserIdentity;
 
     @Mock
     private PetAccessPolicy petAccessPolicy;
@@ -58,7 +54,7 @@ class DeletePetServiceTest {
 
     @Test
     void deletePet_shouldDeleteSuccessfully_whenCallerIsTheOwner() {
-        when(petAccessPolicy.requireOwner(petId)).thenReturn(pet);
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
 
         assertThatNoException().isThrownBy(() -> deletePetService.deletePet(petId, ownerId));
 
@@ -67,17 +63,16 @@ class DeletePetServiceTest {
 
     @Test
     void deletePet_shouldWork_whenTheRequestDoesNotSendOwnerId() {
-        when(petAccessPolicy.requireOwner(petId)).thenReturn(pet);
+        when(petAccessPolicy.requireOwner(petId, null)).thenReturn(pet);
 
         deletePetService.deletePet(petId, null);
 
-        verify(currentUserIdentity).resolveUserId(null);
         verify(petRepository, times(1)).deleteById(petId);
     }
 
     @Test
     void deletePet_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petAccessPolicy.requireOwner(petId)).thenThrow(new PetNotFoundException(petId));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() -> deletePetService.deletePet(petId, ownerId))
                 .isInstanceOf(PetNotFoundException.class);
@@ -88,7 +83,7 @@ class DeletePetServiceTest {
     /** Un EDITOR tampoco puede borrar: la política solo deja al dueño. */
     @Test
     void deletePet_shouldThrow403_whenCallerIsNotTheOwner() {
-        when(petAccessPolicy.requireOwner(petId)).thenThrow(new PetNotBelongsToOwnerException());
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotBelongsToOwnerException());
 
         assertThatThrownBy(() -> deletePetService.deletePet(petId, ownerId))
                 .isInstanceOf(PetNotBelongsToOwnerException.class);
@@ -97,14 +92,24 @@ class DeletePetServiceTest {
     }
 
     @Test
-    void deletePet_shouldThrow403_whenTheRequestSendsAnotherOwnerId() {
-        UUID otherOwner = UUID.randomUUID();
-        when(currentUserIdentity.resolveUserId(otherOwner)).thenThrow(new IdentityMismatchException());
+    void deletePet_shouldThrow403_whenTheRequestSendsAnUnrelatedOwnerId() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireOwner(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
 
-        assertThatThrownBy(() -> deletePetService.deletePet(petId, otherOwner))
+        assertThatThrownBy(() -> deletePetService.deletePet(petId, unrelatedOwner))
                 .isInstanceOf(IdentityMismatchException.class);
 
-        verifyNoInteractions(petAccessPolicy);
+        verify(petRepository, never()).deleteById(any());
+    }
+
+    /** La app vieja mandaba el ownerId real; sigue aceptándose, pero no da permisos de dueño. */
+    @Test
+    void deletePet_shouldThrow403_whenEditorSendsTheRealOwnerId() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotBelongsToOwnerException());
+
+        assertThatThrownBy(() -> deletePetService.deletePet(petId, ownerId))
+                .isInstanceOf(PetNotBelongsToOwnerException.class);
+
         verify(petRepository, never()).deleteById(any());
     }
 }

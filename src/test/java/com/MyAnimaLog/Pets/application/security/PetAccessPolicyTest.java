@@ -4,6 +4,7 @@ import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
 import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
@@ -146,6 +147,74 @@ class PetAccessPolicyTest {
                 .isInstanceOf(UnauthorizedPetAccessException.class);
     }
 
+    // ---------- ownerId heredado (endpoints de una mascota concreta) ----------
+
+    @Test
+    void legacyOwnerId_editorWithTheRealOwnerId_shouldBeAccepted() {
+        givenPetOwnedBy(ownerId);
+        givenCurrentUser(otherUserId);
+        givenSharedAccess(Rol.EDITOR);
+
+        assertThat(petAccessPolicy.requireWrite(petId, ownerId).getId()).isEqualTo(petId);
+    }
+
+    @Test
+    void legacyOwnerId_editorWithAnUnrelatedOwnerId_shouldBeRejected() {
+        givenPetOwnedBy(ownerId);
+        givenCurrentUser(otherUserId);
+        givenSharedAccess(Rol.EDITOR);
+
+        assertThatThrownBy(() -> petAccessPolicy.requireWrite(petId, UUID.randomUUID()))
+                .isInstanceOf(IdentityMismatchException.class);
+    }
+
+    @Test
+    void legacyOwnerId_viewerWithTheRealOwnerId_shouldStillBeDeniedWrite() {
+        givenPetOwnedBy(ownerId);
+        givenCurrentUser(otherUserId);
+        givenSharedAccess(Rol.VIEWER);
+
+        assertThatThrownBy(() -> petAccessPolicy.requireWrite(petId, ownerId))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+    }
+
+    @Test
+    void legacyOwnerId_matchingTheToken_shouldBeAccepted() {
+        givenPetOwnedBy(ownerId);
+        givenCurrentUser(ownerId);
+
+        assertThat(petAccessPolicy.requireWrite(petId, ownerId).getId()).isEqualTo(petId);
+    }
+
+    @Test
+    void legacyOwnerId_doesNotGrantPermissions_byItself() {
+        givenPetOwnedBy(ownerId);
+        givenCurrentUser(otherUserId);
+        givenNoSharedAccess();
+
+        // ownerId coincide con el dueño real, pero el usuario del token no tiene ningún acceso.
+        assertThatThrownBy(() -> petAccessPolicy.requireWrite(petId, ownerId))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+    }
+
+    @Test
+    void legacyOwnerId_onRequireOwner_editorWithTheRealOwnerId_shouldStillBeDeniedOwnerOnlyAction() {
+        givenPetOwnedBy(ownerId);
+        givenCurrentUser(otherUserId);
+        givenSharedAccess(Rol.EDITOR);
+
+        assertThatThrownBy(() -> petAccessPolicy.requireOwner(petId, ownerId))
+                .isInstanceOf(PetNotBelongsToOwnerException.class);
+    }
+
+    @Test
+    void legacyOwnerId_null_shouldSkipTheCompatibilityCheck() {
+        givenPetOwnedBy(ownerId);
+        givenCurrentUser(ownerId);
+
+        assertThat(petAccessPolicy.requireWrite(petId, null).getId()).isEqualTo(petId);
+    }
+
     // ---------- mascota inexistente y mascota sin dueño ----------
 
     @Test
@@ -200,7 +269,7 @@ class PetAccessPolicyTest {
     }
 
     private void givenSharedAccess(Rol role) {
-        when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, otherUserId))
+        lenient().when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, otherUserId))
                 .thenReturn(Optional.of(PetUserAccess.builder()
                         .id(UUID.randomUUID())
                         .petId(petId)

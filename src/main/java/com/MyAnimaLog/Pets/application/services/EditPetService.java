@@ -6,12 +6,9 @@ import com.MyAnimaLog.Pets.application.dto.PetEvent;
 import com.MyAnimaLog.Pets.application.ports.in.EditPetUseCase;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
-import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidPetDataException;
-import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
-import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import org.springframework.stereotype.Service;
 
@@ -25,28 +22,26 @@ public class EditPetService  implements EditPetUseCase {
     private final PetRepositoryPort petRepository;
     private final PublishPetEventUseCase publishPetEventUseCase;
 
-    private final CurrentUserIdentity currentUserIdentity;
     private final PetAccessPolicy petAccessPolicy;
 
     public EditPetService(PetRepositoryPort petRepository,
                           PublishPetEventUseCase publishPetEventUseCase,
-                          CurrentUserIdentity currentUserIdentity,
                           PetAccessPolicy petAccessPolicy) {
         this.petRepository = petRepository;
         this.publishPetEventUseCase = publishPetEventUseCase;
-        this.currentUserIdentity = currentUserIdentity;
         this.petAccessPolicy = petAccessPolicy;
     }
 
     /**
-     * @param ownerId <b>obsoleto</b> (PETS-02): solo se comprueba que coincida con el token. Quien
-     *                autoriza es {@link PetAccessPolicy}: dueño o {@code EDITOR}.
+     * @param ownerId <b>obsoleto</b> (PETS-02): se acepta si coincide con el token o con el dueño
+     *                real de la mascota (así lo mandaba la app vieja para que un {@code EDITOR}
+     *                pudiera editar); cualquier otro valor es 403. Quien autoriza de verdad es
+     *                {@link PetAccessPolicy}: dueño o {@code EDITOR}.
      */
     @Override
     public EditPetResponse editPet(UUID petId, UUID ownerId, EditPetRequest request) {
 
-        currentUserIdentity.resolveUserId(ownerId);
-        Pet pet = petAccessPolicy.requireWrite(petId);
+        Pet pet = petAccessPolicy.requireWrite(petId, ownerId);
 
         validateRequest(request);
 
