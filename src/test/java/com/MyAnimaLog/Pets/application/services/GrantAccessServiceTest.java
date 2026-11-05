@@ -2,14 +2,15 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.GrantAccessRequest;
 import com.MyAnimaLog.Pets.application.dto.GrantAccessResponse;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.AccessAlreadyGrantedException;
 import com.MyAnimaLog.Pets.domain.exceptions.CannotGrantAccessToOwnerException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
-import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetUserAccess;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,10 +33,10 @@ import static org.mockito.Mockito.*;
 class GrantAccessServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepositoryPort;
+    private PetUserAccessRepositoryPort petUserAccessRepositoryPort;
 
     @Mock
-    private PetUserAccessRepositoryPort petUserAccessRepositoryPort;
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private GrantAccessService grantAccessService;
@@ -73,7 +74,7 @@ class GrantAccessServiceTest {
 
     @Test
     void execute_shouldReturnResponse_whenRequestIsValid() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId)).thenReturn(Optional.empty());
         when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(savedAccess);
 
@@ -94,7 +95,7 @@ class GrantAccessServiceTest {
 
     @Test
     void execute_shouldCallRepositorySave_once() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId)).thenReturn(Optional.empty());
         when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(savedAccess);
 
@@ -108,7 +109,7 @@ class GrantAccessServiceTest {
 
     @Test
     void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         GrantAccessRequest request = GrantAccessRequest.builder()
                 .petId(petId).ownerId(ownerId).targetUserId(targetUserId).accessRole(Rol.EDITOR).build();
@@ -120,22 +121,35 @@ class GrantAccessServiceTest {
     }
 
     @Test
-    void execute_shouldThrowUnauthorizedPetAccessException_whenRequesterIsNotOwner() {
-        UUID otherUser = UUID.randomUUID();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldThrow403_whenRequesterIsNotOwner() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotBelongsToOwnerException());
 
         GrantAccessRequest request = GrantAccessRequest.builder()
-                .petId(petId).ownerId(otherUser).targetUserId(targetUserId).accessRole(Rol.EDITOR).build();
+                .petId(petId).ownerId(ownerId).targetUserId(targetUserId).accessRole(Rol.EDITOR).build();
 
         assertThatThrownBy(() -> grantAccessService.execute(request))
-                .isInstanceOf(UnauthorizedPetAccessException.class);
+                .isInstanceOf(PetNotBelongsToOwnerException.class);
+
+        verify(petUserAccessRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrow403_whenOwnerIdIsUnrelated() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireOwner(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
+
+        GrantAccessRequest request = GrantAccessRequest.builder()
+                .petId(petId).ownerId(unrelatedOwner).targetUserId(targetUserId).accessRole(Rol.EDITOR).build();
+
+        assertThatThrownBy(() -> grantAccessService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
 
         verify(petUserAccessRepositoryPort, never()).save(any());
     }
 
     @Test
     void execute_shouldThrowCannotGrantAccessToOwnerException_whenTargetIsOwner() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
 
         GrantAccessRequest request = GrantAccessRequest.builder()
                 .petId(petId).ownerId(ownerId).targetUserId(ownerId).accessRole(Rol.EDITOR).build();
@@ -148,7 +162,7 @@ class GrantAccessServiceTest {
 
     @Test
     void execute_shouldThrowAccessAlreadyGrantedException_whenAccessAlreadyExists() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId))
                 .thenReturn(Optional.of(savedAccess));
 
@@ -157,19 +171,6 @@ class GrantAccessServiceTest {
 
         assertThatThrownBy(() -> grantAccessService.execute(request))
                 .isInstanceOf(AccessAlreadyGrantedException.class);
-
-        verify(petUserAccessRepositoryPort, never()).save(any());
-    }
-
-    @Test
-    void execute_shouldNotCallSave_whenPetNotFound() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
-
-        GrantAccessRequest request = GrantAccessRequest.builder()
-                .petId(petId).ownerId(ownerId).targetUserId(targetUserId).accessRole(Rol.EDITOR).build();
-
-        assertThatThrownBy(() -> grantAccessService.execute(request))
-                .isInstanceOf(PetNotFoundException.class);
 
         verify(petUserAccessRepositoryPort, never()).save(any());
     }

@@ -17,9 +17,14 @@ public class GetSharedProfilesController {
 
     private final GetSharedProfilesUseCase getSharedProfilesUseCase;
 
+    /**
+     * @deprecated usar {@code GET /pets/shared/me}. Solo responde si {@code userId} es el del
+     * token.
+     */
+    @Deprecated
     @GetMapping("/shared")
     public ResponseEntity<List<SharedProfileResponse>> getSharedProfiles(
-            @RequestParam UUID userId) {
+            @RequestParam(required = false) UUID userId) {
 
         GetSharedProfilesRequest request = GetSharedProfilesRequest.builder()
                 .userId(userId)

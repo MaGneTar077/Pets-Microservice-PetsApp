@@ -2,13 +2,14 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.RevokeAccessRequest;
 import com.MyAnimaLog.Pets.application.dto.RevokeAccessResponse;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.AccessNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
-import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetUserAccess;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,16 +25,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class RevokeAccessServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepositoryPort;
+    private PetUserAccessRepositoryPort petUserAccessRepositoryPort;
 
     @Mock
-    private PetUserAccessRepositoryPort petUserAccessRepositoryPort;
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private RevokeAccessService revokeAccessService;
@@ -71,7 +73,7 @@ class RevokeAccessServiceTest {
 
     @Test
     void execute_shouldRevokeAccessSuccessfully_whenRequestIsValid() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId))
                 .thenReturn(Optional.of(access));
         doNothing().when(petUserAccessRepositoryPort).deleteByPetIdAndUserId(petId, targetUserId);
@@ -90,7 +92,7 @@ class RevokeAccessServiceTest {
 
     @Test
     void execute_shouldCallDeleteByPetIdAndUserId_once() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId))
                 .thenReturn(Optional.of(access));
         doNothing().when(petUserAccessRepositoryPort).deleteByPetIdAndUserId(petId, targetUserId);
@@ -105,7 +107,7 @@ class RevokeAccessServiceTest {
 
     @Test
     void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         RevokeAccessRequest request = RevokeAccessRequest.builder()
                 .petId(petId).ownerId(ownerId).targetUserId(targetUserId).build();
@@ -117,22 +119,35 @@ class RevokeAccessServiceTest {
     }
 
     @Test
-    void execute_shouldThrowUnauthorizedPetAccessException_whenRequesterIsNotOwner() {
-        UUID otherUser = UUID.randomUUID();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldThrow403_whenRequesterIsNotOwner() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotBelongsToOwnerException());
 
         RevokeAccessRequest request = RevokeAccessRequest.builder()
-                .petId(petId).ownerId(otherUser).targetUserId(targetUserId).build();
+                .petId(petId).ownerId(ownerId).targetUserId(targetUserId).build();
 
         assertThatThrownBy(() -> revokeAccessService.execute(request))
-                .isInstanceOf(UnauthorizedPetAccessException.class);
+                .isInstanceOf(PetNotBelongsToOwnerException.class);
+
+        verify(petUserAccessRepositoryPort, never()).deleteByPetIdAndUserId(any(), any());
+    }
+
+    @Test
+    void execute_shouldThrow403_whenOwnerIdIsUnrelated() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireOwner(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
+
+        RevokeAccessRequest request = RevokeAccessRequest.builder()
+                .petId(petId).ownerId(unrelatedOwner).targetUserId(targetUserId).build();
+
+        assertThatThrownBy(() -> revokeAccessService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
 
         verify(petUserAccessRepositoryPort, never()).deleteByPetIdAndUserId(any(), any());
     }
 
     @Test
     void execute_shouldThrowAccessNotFoundException_whenAccessDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId))
                 .thenReturn(Optional.empty());
 
@@ -141,19 +156,6 @@ class RevokeAccessServiceTest {
 
         assertThatThrownBy(() -> revokeAccessService.execute(request))
                 .isInstanceOf(AccessNotFoundException.class);
-
-        verify(petUserAccessRepositoryPort, never()).deleteByPetIdAndUserId(any(), any());
-    }
-
-    @Test
-    void execute_shouldNotCallDelete_whenPetNotFound() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
-
-        RevokeAccessRequest request = RevokeAccessRequest.builder()
-                .petId(petId).ownerId(ownerId).targetUserId(targetUserId).build();
-
-        assertThatThrownBy(() -> revokeAccessService.execute(request))
-                .isInstanceOf(PetNotFoundException.class);
 
         verify(petUserAccessRepositoryPort, never()).deleteByPetIdAndUserId(any(), any());
     }

@@ -3,7 +3,9 @@ package com.MyAnimaLog.Pets.application.services;
 import com.MyAnimaLog.Pets.application.dto.GetSharedProfilesRequest;
 import com.MyAnimaLog.Pets.application.dto.SharedProfileResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.model.PetUserAccess;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +19,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -25,6 +27,9 @@ class GetSharedProfilesServiceTest {
 
     @Mock
     private PetUserAccessRepositoryPort petUserAccessRepositoryPort;
+
+    @Mock
+    private CurrentUserIdentity currentUserIdentity;
 
     @InjectMocks
     private GetSharedProfilesService getSharedProfilesService;
@@ -35,6 +40,7 @@ class GetSharedProfilesServiceTest {
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
+        lenient().when(currentUserIdentity.resolveUserId(any())).thenReturn(userId);
 
         access = PetUserAccess.builder()
                 .id(UUID.randomUUID())
@@ -99,5 +105,28 @@ class GetSharedProfilesServiceTest {
         List<SharedProfileResponse> result = getSharedProfilesService.execute(request);
 
         assertThat(result).hasSize(2);
+    }
+
+    @Test
+    void execute_shouldUseTheTokenIdentity_whenCalledFromSharedMe() {
+        when(petUserAccessRepositoryPort.findAllByUserId(userId)).thenReturn(List.of());
+
+        getSharedProfilesService.execute(GetSharedProfilesRequest.builder().build());
+
+        verify(currentUserIdentity).resolveUserId(null);
+        verify(petUserAccessRepositoryPort).findAllByUserId(userId);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenTheAliasAsksForAnotherUser() {
+        UUID otherUser = UUID.randomUUID();
+        when(currentUserIdentity.resolveUserId(otherUser)).thenThrow(new IdentityMismatchException());
+
+        GetSharedProfilesRequest request = GetSharedProfilesRequest.builder().userId(otherUser).build();
+
+        assertThatThrownBy(() -> getSharedProfilesService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verifyNoInteractions(petUserAccessRepositoryPort);
     }
 }
