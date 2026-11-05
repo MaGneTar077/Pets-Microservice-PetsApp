@@ -4,11 +4,14 @@ import com.MyAnimaLog.Pets.application.dto.AddPetRequest;
 import com.MyAnimaLog.Pets.application.dto.PetResponse;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -17,7 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -30,6 +33,9 @@ class PetServiceTest {
     @Mock
     private PublishPetEventUseCase publishPetEventUseCase;
 
+    @Mock
+    private CurrentUserIdentity currentUserIdentity;
+
     @InjectMocks
     private PetService petService;
 
@@ -40,6 +46,7 @@ class PetServiceTest {
     @BeforeEach
     void setUp() {
         ownerId = UUID.randomUUID();
+        lenient().when(currentUserIdentity.resolveUserId(any())).thenReturn(ownerId);
 
         request = new AddPetRequest();
         request.setOwnerId(ownerId);
@@ -114,5 +121,29 @@ class PetServiceTest {
         PetResponse response = petService.add(request);
 
         assertThat(response.getPhotoUrl()).isNull();
+    }
+
+    @Test
+    void addPet_shouldTakeTheOwnerFromTheToken_whenTheBodyDoesNotSendIt() {
+        request.setOwnerId(null);
+        when(petRepositoryPort.save(any(Pet.class))).thenReturn(savedPet);
+
+        petService.add(request);
+
+        ArgumentCaptor<Pet> captor = ArgumentCaptor.forClass(Pet.class);
+        verify(petRepositoryPort).save(captor.capture());
+        assertThat(captor.getValue().getOwnerId()).isEqualTo(ownerId);
+    }
+
+    @Test
+    void addPet_shouldReject_whenTheBodySendsAnotherOwner() {
+        UUID otherUser = UUID.randomUUID();
+        request.setOwnerId(otherUser);
+        when(currentUserIdentity.resolveUserId(otherUser)).thenThrow(new IdentityMismatchException());
+
+        assertThatThrownBy(() -> petService.add(request))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verify(petRepositoryPort, never()).save(any(Pet.class));
     }
 }

@@ -7,6 +7,7 @@ import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.application.ports.in.AddPetUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +20,7 @@ public class PetService implements AddPetUseCase {
 
     private final PetRepositoryPort petRepositoryPort;
     private final PublishPetEventUseCase publishPetEventUseCase;
+    private final CurrentUserIdentity currentUserIdentity;
 
     @Override
     public Pet addPet(Pet pet) {
@@ -40,7 +42,7 @@ public class PetService implements AddPetUseCase {
     public PetResponse add(AddPetRequest request) {
 
         Pet pet = Pet.builder()
-                .ownerId(request.getOwnerId())
+                .ownerId(currentUserIdentity.resolveUserId(request.getOwnerId()))
                 .name(request.getName())
                 .species(request.getSpecies())
                 .breed(request.getBreed())

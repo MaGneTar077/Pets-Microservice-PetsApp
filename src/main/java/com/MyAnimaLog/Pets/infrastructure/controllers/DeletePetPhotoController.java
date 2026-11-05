@@ -19,7 +19,7 @@ public class DeletePetPhotoController {
     @DeleteMapping("/{petId}/photo")
     public ResponseEntity<DeletePetPhotoResponse> deletePhoto(
             @PathVariable UUID petId,
-            @RequestParam UUID ownerId
+            @RequestParam(required = false) UUID ownerId
     ) {
         DeletePetPhotoRequest request = DeletePetPhotoRequest.builder()
                 .petId(petId)

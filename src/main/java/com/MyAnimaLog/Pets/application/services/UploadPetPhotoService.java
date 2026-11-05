@@ -7,6 +7,8 @@ import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.in.UploadPetPhotoUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetPhotoStoragePort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.exceptions.FileSizeExceededException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidImageFormatException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
@@ -32,16 +34,17 @@ public class UploadPetPhotoService implements UploadPetPhotoUseCase {
     private final PetRepositoryPort petRepository;
     private final PetPhotoStoragePort photoStorage;
     private final PublishPetEventUseCase publishPetEventUseCase;
+    private final CurrentUserIdentity currentUserIdentity;
+    private final PetAccessPolicy petAccessPolicy;
 
+    /** {@code request.ownerId} es obsoleto (PETS-02): autoriza el token, dueño o {@code EDITOR}. */
     @Override
     public UploadPetPhotoResponse execute(UploadPetPhotoRequest request) {
 
         validateFile(request.getFile());
 
-        Pet pet = petRepository
-                .findByIdAndOwnerId(request.getPetId(), request.getOwnerId())
-                .orElseThrow(() -> new NoSuchElementException(
-                        "Pet not found or does not belong to the owner"));
+        currentUserIdentity.resolveUserId(request.getOwnerId());
+        Pet pet = petAccessPolicy.requireWrite(request.getPetId());
 
         String photoUrl = photoStorage.upload(request.getPetId(), request.getFile());
 

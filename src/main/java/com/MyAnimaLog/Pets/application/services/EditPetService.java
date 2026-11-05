@@ -6,6 +6,8 @@ import com.MyAnimaLog.Pets.application.dto.PetEvent;
 import com.MyAnimaLog.Pets.application.ports.in.EditPetUseCase;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidPetDataException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
@@ -23,20 +25,28 @@ public class EditPetService  implements EditPetUseCase {
     private final PetRepositoryPort petRepository;
     private final PublishPetEventUseCase publishPetEventUseCase;
 
-    public EditPetService(PetRepositoryPort petRepository, PublishPetEventUseCase publishPetEventUseCase) {
+    private final CurrentUserIdentity currentUserIdentity;
+    private final PetAccessPolicy petAccessPolicy;
+
+    public EditPetService(PetRepositoryPort petRepository,
+                          PublishPetEventUseCase publishPetEventUseCase,
+                          CurrentUserIdentity currentUserIdentity,
+                          PetAccessPolicy petAccessPolicy) {
         this.petRepository = petRepository;
         this.publishPetEventUseCase = publishPetEventUseCase;
+        this.currentUserIdentity = currentUserIdentity;
+        this.petAccessPolicy = petAccessPolicy;
     }
 
+    /**
+     * @param ownerId <b>obsoleto</b> (PETS-02): solo se comprueba que coincida con el token. Quien
+     *                autoriza es {@link PetAccessPolicy}: dueño o {@code EDITOR}.
+     */
     @Override
     public EditPetResponse editPet(UUID petId, UUID ownerId, EditPetRequest request) {
 
-        Pet pet = petRepository.findById(petId)
-                .orElseThrow(() -> new PetNotFoundException(petId.toString()));
-
-        if (!pet.getOwnerId().equals(ownerId)) {
-            throw new PetNotBelongsToOwnerException();
-        }
+        currentUserIdentity.resolveUserId(ownerId);
+        Pet pet = petAccessPolicy.requireWrite(petId);
 
         validateRequest(request);
 

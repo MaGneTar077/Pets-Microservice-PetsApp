@@ -1,6 +1,7 @@
 package com.MyAnimaLog.Pets.application.dto;
 
 import com.MyAnimaLog.Pets.domain.enums.Sex;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -15,7 +16,9 @@ import java.util.UUID;
 @NoArgsConstructor
 public class AddPetRequest {
 
-    @NotNull(message = "Owner ID is required")
+    @Schema(deprecated = true,
+            description = "Obsoleto (PETS-02): el dueño se toma del token. Si se envía debe coincidir "
+                    + "con el usuario autenticado; si no, la respuesta es 403 IDENTITY_MISMATCH.")
     private UUID ownerId;
 
     @NotBlank(message = "Pet name is required")

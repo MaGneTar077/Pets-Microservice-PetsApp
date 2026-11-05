@@ -17,7 +17,7 @@ public class DeletePetController {
     @DeleteMapping("/{petId}")
     public ResponseEntity<Void> deletePet(
             @PathVariable UUID petId,
-            @RequestParam UUID ownerId) {
+            @RequestParam(required = false) UUID ownerId) {
         deletePetUseCase.deletePet(petId, ownerId);
         return ResponseEntity.noContent().build();
     }

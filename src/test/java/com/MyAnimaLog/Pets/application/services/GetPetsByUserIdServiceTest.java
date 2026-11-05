@@ -2,7 +2,9 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.PetResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.infrastructure.mapper.PetMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,7 +19,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -29,6 +31,9 @@ class GetPetsByUserIdServiceTest {
 
     @Mock
     private PetMapper petMapper;
+
+    @Mock
+    private CurrentUserIdentity currentUserIdentity;
 
     @InjectMocks
     private GetPetsByUserIdService getPetsByUserIdService;
@@ -42,6 +47,7 @@ class GetPetsByUserIdServiceTest {
     @BeforeEach
     void setUp() {
         ownerId = UUID.randomUUID();
+        lenient().when(currentUserIdentity.resolveUserId(any())).thenReturn(ownerId);
 
         pet1 = Pet.builder()
                 .id(UUID.randomUUID())
@@ -117,6 +123,28 @@ class GetPetsByUserIdServiceTest {
         getPetsByUserIdService.getPetsByUserId(ownerId);
 
         verify(petRepositoryPort, times(1)).findAllByOwnerId(ownerId);
+    }
+
+    @Test
+    void getPetsByUserId_shouldUseTheTokenIdentity_whenCalledFromPetsMe() {
+        when(petRepositoryPort.findAllByOwnerId(ownerId)).thenReturn(List.of(pet1));
+        when(petMapper.toResponse(pet1)).thenReturn(response1);
+
+        getPetsByUserIdService.getPetsByUserId(null);
+
+        verify(currentUserIdentity).resolveUserId(null);
+        verify(petRepositoryPort).findAllByOwnerId(ownerId);
+    }
+
+    @Test
+    void getPetsByUserId_shouldPropagate403_whenTheAliasAsksForAnotherUser() {
+        UUID otherUser = UUID.randomUUID();
+        when(currentUserIdentity.resolveUserId(otherUser)).thenThrow(new IdentityMismatchException());
+
+        assertThatThrownBy(() -> getPetsByUserIdService.getPetsByUserId(otherUser))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verifyNoInteractions(petRepositoryPort);
     }
 
     @Test

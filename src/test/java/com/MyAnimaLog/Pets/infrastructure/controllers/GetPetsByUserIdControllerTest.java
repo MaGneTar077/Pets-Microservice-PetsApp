@@ -43,6 +43,18 @@ class GetPetsByUserIdControllerTest {
     @MockitoBean
     private GetPetsByUserIdUseCase getPetsByUserIdUseCase;
 
+    /** El alias obsoleto solo responde por el propio usuario; otro userId es 403. */
+    @Test
+    void getPetsByUserId_shouldReturn403_whenAskingForAnotherUser() throws Exception {
+        UUID otherUser = UUID.randomUUID();
+        when(getPetsByUserIdUseCase.getPetsByUserId(otherUser))
+                .thenThrow(new com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException());
+
+        mockMvc.perform(get("/pets/user/{userId}", otherUser).with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("IDENTITY_MISMATCH"));
+    }
+
     private UUID userId;
 
     @BeforeEach

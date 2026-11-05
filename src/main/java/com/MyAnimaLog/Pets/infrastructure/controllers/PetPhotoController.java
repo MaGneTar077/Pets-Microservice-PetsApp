@@ -23,7 +23,7 @@ public class PetPhotoController {
     )
     public ResponseEntity<UploadPetPhotoResponse> uploadPhoto(
             @PathVariable UUID petId,
-            @RequestParam UUID ownerId,
+            @RequestParam(required = false) UUID ownerId,
             @RequestPart("file") MultipartFile file
     ) {
         UploadPetPhotoRequest request = UploadPetPhotoRequest.builder()

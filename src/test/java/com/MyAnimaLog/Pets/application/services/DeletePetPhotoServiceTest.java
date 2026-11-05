@@ -4,8 +4,13 @@ import com.MyAnimaLog.Pets.application.dto.DeletePetPhotoRequest;
 import com.MyAnimaLog.Pets.application.dto.DeletePetPhotoResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetPhotoStoragePort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidPetDataException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +21,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,6 +36,12 @@ class DeletePetPhotoServiceTest {
 
     @Mock
     private PetPhotoStoragePort photoStorage;
+
+    @Mock
+    private CurrentUserIdentity currentUserIdentity;
+
+    @Mock
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private DeletePetPhotoService deletePetPhotoService;
@@ -67,7 +77,7 @@ class DeletePetPhotoServiceTest {
 
     @Test
     void execute_shouldReturnResponse_whenPetHasPhoto() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(petWithPhoto));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(petWithPhoto);
         doNothing().when(photoStorage).delete(any(), any());
         when(petRepository.save(any(Pet.class))).thenReturn(petWithoutPhoto);
 
@@ -85,7 +95,7 @@ class DeletePetPhotoServiceTest {
 
     @Test
     void execute_shouldCallStorageDelete_once() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(petWithPhoto));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(petWithPhoto);
         doNothing().when(photoStorage).delete(any(), any());
         when(petRepository.save(any(Pet.class))).thenReturn(petWithoutPhoto);
 
@@ -99,7 +109,7 @@ class DeletePetPhotoServiceTest {
 
     @Test
     void execute_shouldCallRepositorySave_once() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(petWithPhoto));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(petWithPhoto);
         doNothing().when(photoStorage).delete(any(), any());
         when(petRepository.save(any(Pet.class))).thenReturn(petWithoutPhoto);
 
@@ -113,7 +123,7 @@ class DeletePetPhotoServiceTest {
 
     @Test
     void execute_shouldSavePetWithNullPhotoUrl() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(petWithPhoto));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(petWithPhoto);
         doNothing().when(photoStorage).delete(any(), any());
         when(petRepository.save(any(Pet.class))).thenReturn(petWithoutPhoto);
 
@@ -126,33 +136,72 @@ class DeletePetPhotoServiceTest {
     }
 
     @Test
-    void execute_shouldThrowNoSuchElementException_whenPetNotFound() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.empty());
+    void execute_shouldThrowPetNotFound_whenPetDoesNotExist() {
+        when(petAccessPolicy.requireWrite(petId)).thenThrow(new PetNotFoundException(petId));
 
         DeletePetPhotoRequest request = DeletePetPhotoRequest.builder()
                 .petId(petId).ownerId(ownerId).build();
 
         assertThatThrownBy(() -> deletePetPhotoService.execute(request))
-                .isInstanceOf(NoSuchElementException.class)
+                .isInstanceOf(PetNotFoundException.class)
                 .hasMessageContaining("Pet not found");
     }
 
     @Test
     void execute_shouldNotCallStorage_whenPetNotFound() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireWrite(petId)).thenThrow(new PetNotFoundException(petId));
 
         DeletePetPhotoRequest request = DeletePetPhotoRequest.builder()
                 .petId(petId).ownerId(ownerId).build();
 
         assertThatThrownBy(() -> deletePetPhotoService.execute(request))
-                .isInstanceOf(NoSuchElementException.class);
+                .isInstanceOf(PetNotFoundException.class);
 
         verify(photoStorage, never()).delete(any(), any());
     }
 
     @Test
+    void execute_shouldThrow403_whenCallerHasNoWriteAccess() {
+        when(petAccessPolicy.requireWrite(petId)).thenThrow(new UnauthorizedPetAccessException());
+
+        DeletePetPhotoRequest request = DeletePetPhotoRequest.builder()
+                .petId(petId).ownerId(ownerId).build();
+
+        assertThatThrownBy(() -> deletePetPhotoService.execute(request))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+
+        verify(photoStorage, never()).delete(any(), any());
+    }
+
+    @Test
+    void execute_shouldThrow403_whenTheRequestSendsAnotherOwnerId() {
+        UUID otherOwner = UUID.randomUUID();
+        when(currentUserIdentity.resolveUserId(otherOwner)).thenThrow(new IdentityMismatchException());
+
+        DeletePetPhotoRequest request = DeletePetPhotoRequest.builder()
+                .petId(petId).ownerId(otherOwner).build();
+
+        assertThatThrownBy(() -> deletePetPhotoService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verifyNoInteractions(petAccessPolicy);
+        verify(photoStorage, never()).delete(any(), any());
+    }
+
+    @Test
+    void execute_shouldWork_whenTheRequestDoesNotSendOwnerId() {
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(petWithPhoto);
+        when(petRepository.save(any(Pet.class))).thenReturn(petWithPhoto);
+
+        deletePetPhotoService.execute(DeletePetPhotoRequest.builder().petId(petId).build());
+
+        verify(currentUserIdentity).resolveUserId(null);
+        verify(photoStorage).delete(petId, photoUrl);
+    }
+
+    @Test
     void execute_shouldThrowInvalidPetDataException_whenPetHasNoPhoto() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(petWithoutPhoto));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(petWithoutPhoto);
 
         DeletePetPhotoRequest request = DeletePetPhotoRequest.builder()
                 .petId(petId).ownerId(ownerId).build();
@@ -164,7 +213,7 @@ class DeletePetPhotoServiceTest {
 
     @Test
     void execute_shouldNotCallStorage_whenPetHasNoPhoto() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(petWithoutPhoto));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(petWithoutPhoto);
 
         DeletePetPhotoRequest request = DeletePetPhotoRequest.builder()
                 .petId(petId).ownerId(ownerId).build();
