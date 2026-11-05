@@ -28,7 +28,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(PetNotBelongsToOwnerException.class)
     public ResponseEntity<Map<String, String>> handleNotBelongs(PetNotBelongsToOwnerException ex) {
-        return buildError(HttpStatus.FORBIDDEN, ex.getMessage());
+        return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), "NOT_PET_OWNER");
+    }
+
+    @ExceptionHandler(IdentityMismatchException.class)
+    public ResponseEntity<Map<String, String>> handleIdentityMismatch(IdentityMismatchException ex) {
+        return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), "IDENTITY_MISMATCH");
     }
 
     @ExceptionHandler(InvalidPetDataException.class)
@@ -83,6 +88,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(error);
     }
 
+    /**
+     * Igual que {@link #buildError(HttpStatus, String)} pero añadiendo {@code code}, para que el
+     * frontend distinga el motivo sin parsear el mensaje. Solo lo llevan las excepciones que tienen
+     * un código definido; el campo {@code error} no cambia.
+     */
+    private ResponseEntity<Map<String, String>> buildError(HttpStatus status, String message, String code) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", message);
+        error.put("code", code);
+        return ResponseEntity.status(status).body(error);
+    }
+
     @ExceptionHandler(InvalidImageFormatException.class)
     public ResponseEntity<Map<String, String>> handleInvalidImage(InvalidImageFormatException ex) {
         return buildError(HttpStatus.UNSUPPORTED_MEDIA_TYPE, ex.getMessage());
@@ -120,7 +137,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DocumentNotBelongsToPetException.class)
     public ResponseEntity<Map<String, String>> handleDocumentNotBelongs(DocumentNotBelongsToPetException ex) {
-        return buildError(HttpStatus.FORBIDDEN, ex.getMessage());
+        return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), "DOCUMENT_NOT_IN_PET");
     }
 
     @ExceptionHandler(InvalidDocumentException.class)
@@ -130,7 +147,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(UnauthorizedPetAccessException.class)
     public ResponseEntity<Map<String, String>> handleUnauthorizedPetAccess(UnauthorizedPetAccessException ex) {
-        return buildError(HttpStatus.FORBIDDEN, ex.getMessage());
+        return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), "PET_ACCESS_DENIED");
     }
 
     @ExceptionHandler(CannotGrantAccessToOwnerException.class)
