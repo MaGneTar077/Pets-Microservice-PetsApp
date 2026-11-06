@@ -4,6 +4,7 @@ import com.MyAnimaLog.Pets.application.dto.GetPendingInvitationsByEmailRequest;
 import com.MyAnimaLog.Pets.application.dto.PetInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.in.GetPendingInvitationsByEmailUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import lombok.RequiredArgsConstructor;
@@ -16,11 +17,20 @@ import java.util.List;
 public class GetPendingInvitationsByEmailService implements GetPendingInvitationsByEmailUseCase {
 
     private final PetInvitationRepositoryPort petInvitationRepositoryPort;
+    private final CurrentUserIdentity currentUserIdentity;
 
+    /**
+     * Regla estricta de "lo mío" (PETS-02): un usuario solo ve las invitaciones pendientes para
+     * su propio email. {@code request.email} llega {@code null} desde
+     * {@code GET /pets/invitations/me}, o con el valor heredado (header o body) desde los alias
+     * obsoletos, aceptado solo si coincide con el email del token (sin distinguir mayúsculas).
+     */
     @Override
     public List<PetInvitationResponse> execute(GetPendingInvitationsByEmailRequest request) {
+        String email = currentUserIdentity.resolveEmail(request.getEmail());
+
         return petInvitationRepositoryPort
-                .findAllByEmailAndStatus(request.getEmail(), InvitationStatus.PENDING)
+                .findAllByEmailAndStatus(email, InvitationStatus.PENDING)
                 .stream()
                 .map(this::toResponse)
                 .toList();

@@ -19,11 +19,13 @@ public class IsAlreadyInvitedController {
     @GetMapping("/{petId}/invitations/check")
     public ResponseEntity<IsAlreadyInvitedResponse> isAlreadyInvited(
             @PathVariable UUID petId,
-            @RequestParam String email) {
+            @RequestParam String email,
+            @RequestParam(required = false) UUID ownerId) {
 
         IsAlreadyInvitedRequest request = IsAlreadyInvitedRequest.builder()
                 .petId(petId)
                 .email(email)
+                .ownerId(ownerId)
                 .build();
 
         return ResponseEntity.ok(isAlreadyInvitedUseCase.execute(request));

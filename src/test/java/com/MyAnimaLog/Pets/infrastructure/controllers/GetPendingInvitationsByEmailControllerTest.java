@@ -5,6 +5,7 @@ import com.MyAnimaLog.Pets.application.dto.PetInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.in.GetPendingInvitationsByEmailUseCase;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.infrastructure.config.GlobalExceptionHandler;
 import com.MyAnimaLog.Pets.infrastructure.config.SecurityConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,6 +32,11 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * Alias @Deprecated: GET /pets/invitations/pending, con el correo por header X-User-Email (lo que
+ * el controlador usa hoy) o por body {@code { "email": "..." }} (la variante previa a la 2eaec26).
+ * La ruta oficial GET /pets/invitations/me vive en GetMyPendingInvitationsControllerTest.
+ */
 @WebMvcTest(
         controllers = GetPendingInvitationsByEmailController.class,
         excludeFilters = @ComponentScan.Filter(
@@ -67,7 +73,7 @@ class GetPendingInvitationsByEmailControllerTest {
     }
 
     @Test
-    void getPendingInvitationsByEmail_shouldReturn200WithList_whenInvitationsExist() throws Exception {
+    void getPendingInvitationsByEmail_shouldReturn200WithList_whenHeaderMatchesToken() throws Exception {
         PetInvitationResponse response = PetInvitationResponse.builder()
                 .id(UUID.randomUUID())
                 .petId(petId)
@@ -83,8 +89,7 @@ class GetPendingInvitationsByEmailControllerTest {
                 .thenReturn(List.of(response));
 
         mockMvc.perform(get("/pets/invitations/pending")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(buildBody("invitado@email.com"))
+                        .header("X-User-Email", "invitado@email.com")
                         .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].email").value("invitado@email.com"))
@@ -98,10 +103,43 @@ class GetPendingInvitationsByEmailControllerTest {
                 .thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/pets/invitations/pending")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(buildBody("invitado@email.com"))
+                        .header("X-User-Email", "invitado@email.com")
                         .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isEmpty());
+    }
+
+    /** Variante previa a la 2eaec26: el correo llegaba en el body, no en un header. */
+    @Test
+    void getPendingInvitationsByEmail_shouldReturn200WithList_whenEmailArrivesInTheLegacyBody() throws Exception {
+        when(getPendingInvitationsByEmailUseCase.execute(any(GetPendingInvitationsByEmailRequest.class)))
+                .thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/pets/invitations/pending")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buildBody("invitado@email.com"))
+                        .with(csrf()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getPendingInvitationsByEmail_shouldReturn200_whenNeitherHeaderNorBodyAreSent() throws Exception {
+        when(getPendingInvitationsByEmailUseCase.execute(any(GetPendingInvitationsByEmailRequest.class)))
+                .thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/pets/invitations/pending").with(csrf()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getPendingInvitationsByEmail_shouldReturn403_whenHeaderEmailIsUnrelatedToTheToken() throws Exception {
+        when(getPendingInvitationsByEmailUseCase.execute(any(GetPendingInvitationsByEmailRequest.class)))
+                .thenThrow(new IdentityMismatchException());
+
+        mockMvc.perform(get("/pets/invitations/pending")
+                        .header("X-User-Email", "otro@correo.com")
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("IDENTITY_MISMATCH"));
     }
 }

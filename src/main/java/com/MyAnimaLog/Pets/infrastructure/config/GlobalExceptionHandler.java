@@ -184,4 +184,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleUnauthenticated(UnauthenticatedException ex) {
         return buildError(HttpStatus.UNAUTHORIZED, ex.getMessage());
     }
+
+    @ExceptionHandler(InvitationEmailMismatchException.class)
+    public ResponseEntity<Map<String, String>> handleInvitationEmailMismatch(InvitationEmailMismatchException ex) {
+        return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), "INVITATION_EMAIL_MISMATCH");
+    }
+
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<Map<String, String>> handleEmailNotVerified(EmailNotVerifiedException ex) {
+        return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), "EMAIL_NOT_VERIFIED");
+    }
 }

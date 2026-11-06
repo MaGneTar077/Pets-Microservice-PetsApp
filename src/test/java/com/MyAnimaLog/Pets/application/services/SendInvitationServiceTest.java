@@ -4,13 +4,14 @@ import com.MyAnimaLog.Pets.application.dto.SendInvitationRequest;
 import com.MyAnimaLog.Pets.application.dto.SendInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationAlreadyExistsException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
-import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,13 +34,13 @@ import static org.mockito.Mockito.*;
 class SendInvitationServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepositoryPort;
-
-    @Mock
     private PetInvitationRepositoryPort petInvitationRepositoryPort;
 
     @Mock
     private PublishPetEventUseCase publishPetEventUseCase;
+
+    @Mock
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private SendInvitationService sendInvitationService;
@@ -78,7 +79,7 @@ class SendInvitationServiceTest {
 
     @Test
     void execute_shouldReturnResponse_whenRequestIsValid() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findByPetIdAndEmailAndStatus(petId, "invitado@email.com", InvitationStatus.PENDING))
                 .thenReturn(Optional.empty());
         when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(savedInvitation);
@@ -103,7 +104,7 @@ class SendInvitationServiceTest {
 
     @Test
     void execute_shouldCallRepositorySave_once() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findByPetIdAndEmailAndStatus(petId, "invitado@email.com", InvitationStatus.PENDING))
                 .thenReturn(Optional.empty());
         when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(savedInvitation);
@@ -118,7 +119,7 @@ class SendInvitationServiceTest {
 
     @Test
     void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         SendInvitationRequest request = SendInvitationRequest.builder()
                 .petId(petId).ownerId(ownerId).email("invitado@email.com").accessRole(Rol.EDITOR).build();
@@ -130,22 +131,35 @@ class SendInvitationServiceTest {
     }
 
     @Test
-    void execute_shouldThrowUnauthorizedPetAccessException_whenRequesterIsNotOwner() {
-        UUID otherUser = UUID.randomUUID();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldThrow403_whenRequesterIsNotOwner() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotBelongsToOwnerException());
 
         SendInvitationRequest request = SendInvitationRequest.builder()
-                .petId(petId).ownerId(otherUser).email("invitado@email.com").accessRole(Rol.EDITOR).build();
+                .petId(petId).ownerId(ownerId).email("invitado@email.com").accessRole(Rol.EDITOR).build();
 
         assertThatThrownBy(() -> sendInvitationService.execute(request))
-                .isInstanceOf(UnauthorizedPetAccessException.class);
+                .isInstanceOf(PetNotBelongsToOwnerException.class);
+
+        verify(petInvitationRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrow403_whenOwnerIdIsUnrelated() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireOwner(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
+
+        SendInvitationRequest request = SendInvitationRequest.builder()
+                .petId(petId).ownerId(unrelatedOwner).email("invitado@email.com").accessRole(Rol.EDITOR).build();
+
+        assertThatThrownBy(() -> sendInvitationService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
 
         verify(petInvitationRepositoryPort, never()).save(any());
     }
 
     @Test
     void execute_shouldThrowInvitationAlreadyExistsException_whenPendingInvitationExists() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findByPetIdAndEmailAndStatus(petId, "invitado@email.com", InvitationStatus.PENDING))
                 .thenReturn(Optional.of(savedInvitation));
 
@@ -154,19 +168,6 @@ class SendInvitationServiceTest {
 
         assertThatThrownBy(() -> sendInvitationService.execute(request))
                 .isInstanceOf(InvitationAlreadyExistsException.class);
-
-        verify(petInvitationRepositoryPort, never()).save(any());
-    }
-
-    @Test
-    void execute_shouldNotCallSave_whenPetNotFound() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
-
-        SendInvitationRequest request = SendInvitationRequest.builder()
-                .petId(petId).ownerId(ownerId).email("invitado@email.com").accessRole(Rol.EDITOR).build();
-
-        assertThatThrownBy(() -> sendInvitationService.execute(request))
-                .isInstanceOf(PetNotFoundException.class);
 
         verify(petInvitationRepositoryPort, never()).save(any());
     }

@@ -4,11 +4,8 @@ import com.MyAnimaLog.Pets.application.dto.GetPendingInvitationsByPetRequest;
 import com.MyAnimaLog.Pets.application.dto.PetInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.in.GetPendingInvitationsByPetUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
-import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
-import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
-import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,17 +16,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class GetPendingInvitationsByPetService implements GetPendingInvitationsByPetUseCase {
 
-    private final PetRepositoryPort petRepositoryPort;
     private final PetInvitationRepositoryPort petInvitationRepositoryPort;
+    private final PetAccessPolicy petAccessPolicy;
 
+    /** {@code request.ownerId} es obsoleto (PETS-02): ver las invitaciones pendientes es exclusivo del dueño. */
     @Override
     public List<PetInvitationResponse> execute(GetPendingInvitationsByPetRequest request) {
-        Pet pet = petRepositoryPort.findById(request.getPetId())
-                .orElseThrow(() -> new PetNotFoundException(request.getPetId()));
-
-        if (!pet.getOwnerId().equals(request.getOwnerId())) {
-            throw new UnauthorizedPetAccessException();
-        }
+        petAccessPolicy.requireOwner(request.getPetId(), request.getOwnerId());
 
         return petInvitationRepositoryPort
                 .findAllByPetIdAndStatus(request.getPetId(), InvitationStatus.PENDING)

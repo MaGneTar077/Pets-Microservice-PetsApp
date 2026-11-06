@@ -14,4 +14,5 @@ import java.util.UUID;
 public class IsAlreadyInvitedRequest {
     private UUID petId;
     private String email;
+    private UUID ownerId;
 }
