@@ -3,7 +3,9 @@ package com.MyAnimaLog.Pets.infrastructure.controllers;
 import com.MyAnimaLog.Pets.application.dto.RejectInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.in.RejectInvitationUseCase;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
+import com.MyAnimaLog.Pets.domain.exceptions.EmailNotVerifiedException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationAlreadyProcessedException;
+import com.MyAnimaLog.Pets.domain.exceptions.InvitationEmailMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationNotFoundException;
 import com.MyAnimaLog.Pets.infrastructure.config.GlobalExceptionHandler;
 import com.MyAnimaLog.Pets.infrastructure.config.SecurityConfig;
@@ -26,6 +28,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/** Ruta oficial: POST /pets/invitations/{token}/reject. El alias /invitations/{token}/reject vive en LegacyRejectInvitationControllerTest. */
 @WebMvcTest(
         controllers = RejectInvitationController.class,
         excludeFilters = @ComponentScan.Filter(
@@ -62,7 +65,7 @@ class RejectInvitationControllerTest {
 
         when(rejectInvitationUseCase.execute(any())).thenReturn(response);
 
-        mockMvc.perform(post("/invitations/{token}/reject", token)
+        mockMvc.perform(post("/pets/invitations/{token}/reject", token)
                         .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.petId").value(petId.toString()))
@@ -74,7 +77,7 @@ class RejectInvitationControllerTest {
         when(rejectInvitationUseCase.execute(any()))
                 .thenThrow(new InvitationNotFoundException());
 
-        mockMvc.perform(post("/invitations/{token}/reject", token)
+        mockMvc.perform(post("/pets/invitations/{token}/reject", token)
                         .with(csrf()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").exists());
@@ -85,9 +88,31 @@ class RejectInvitationControllerTest {
         when(rejectInvitationUseCase.execute(any()))
                 .thenThrow(new InvitationAlreadyProcessedException());
 
-        mockMvc.perform(post("/invitations/{token}/reject", token)
+        mockMvc.perform(post("/pets/invitations/{token}/reject", token)
                         .with(csrf()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void rejectInvitation_shouldReturn403_whenTokenEmailDoesNotMatchInvitation() throws Exception {
+        when(rejectInvitationUseCase.execute(any()))
+                .thenThrow(new InvitationEmailMismatchException());
+
+        mockMvc.perform(post("/pets/invitations/{token}/reject", token)
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("INVITATION_EMAIL_MISMATCH"));
+    }
+
+    @Test
+    void rejectInvitation_shouldReturn403_whenEmailIsNotVerified() throws Exception {
+        when(rejectInvitationUseCase.execute(any()))
+                .thenThrow(new EmailNotVerifiedException());
+
+        mockMvc.perform(post("/pets/invitations/{token}/reject", token)
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("EMAIL_NOT_VERIFIED"));
     }
 }

@@ -4,13 +4,14 @@ import com.MyAnimaLog.Pets.application.dto.ResendInvitationRequest;
 import com.MyAnimaLog.Pets.application.dto.ResendInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationNotFoundException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
-import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +36,7 @@ import static org.mockito.Mockito.*;
 class ResendInvitationServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepositoryPort;
+    private PetAccessPolicy petAccessPolicy;
 
     @Mock
     private PetInvitationRepositoryPort petInvitationRepositoryPort;
@@ -93,7 +94,7 @@ class ResendInvitationServiceTest {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findAllByPetIdAndEmail(petId, email))
                 .thenReturn(List.of(existingInvitation));
         when(petInvitationRepositoryPort.save(any(PetInvitation.class)))
@@ -121,7 +122,7 @@ class ResendInvitationServiceTest {
                 .expiresAt(LocalDateTime.now().plusDays(7))
                 .build();
 
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findAllByPetIdAndEmail(petId, email))
                 .thenReturn(List.of(existingInvitation));
         when(petInvitationRepositoryPort.save(any(PetInvitation.class)))
@@ -137,7 +138,7 @@ class ResendInvitationServiceTest {
 
     @Test
     void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         ResendInvitationRequest request = ResendInvitationRequest.builder()
                 .petId(petId).ownerId(ownerId).email(email).accessRole(Rol.EDITOR).build();
@@ -149,22 +150,35 @@ class ResendInvitationServiceTest {
     }
 
     @Test
-    void execute_shouldThrowUnauthorizedPetAccessException_whenRequesterIsNotOwner() {
-        UUID otherUser = UUID.randomUUID();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldThrow403_whenRequesterIsNotOwner() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotBelongsToOwnerException());
 
         ResendInvitationRequest request = ResendInvitationRequest.builder()
-                .petId(petId).ownerId(otherUser).email(email).accessRole(Rol.EDITOR).build();
+                .petId(petId).ownerId(ownerId).email(email).accessRole(Rol.EDITOR).build();
 
         assertThatThrownBy(() -> resendInvitationService.execute(request))
-                .isInstanceOf(UnauthorizedPetAccessException.class);
+                .isInstanceOf(PetNotBelongsToOwnerException.class);
+
+        verify(petInvitationRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrow403_whenOwnerIdIsUnrelated() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireOwner(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
+
+        ResendInvitationRequest request = ResendInvitationRequest.builder()
+                .petId(petId).ownerId(unrelatedOwner).email(email).accessRole(Rol.EDITOR).build();
+
+        assertThatThrownBy(() -> resendInvitationService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
 
         verify(petInvitationRepositoryPort, never()).save(any());
     }
 
     @Test
     void execute_shouldThrowInvitationNotFoundException_whenNoInvitationExists() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findAllByPetIdAndEmail(petId, email))
                 .thenReturn(Collections.emptyList());
 

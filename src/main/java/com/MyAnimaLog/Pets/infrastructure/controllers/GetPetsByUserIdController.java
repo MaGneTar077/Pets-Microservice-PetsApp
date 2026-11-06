@@ -19,6 +19,10 @@ public class GetPetsByUserIdController {
 
     private final GetPetsByUserIdUseCase getPetsByUserIdUseCase;
 
+    /**
+     * @deprecated usar {@code GET /pets/me}. Solo responde si {@code userId} es el del token.
+     */
+    @Deprecated
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<PetResponse>> getPetsByUserId(@PathVariable UUID userId) {
         return ResponseEntity.ok(getPetsByUserIdUseCase.getPetsByUserId(userId));

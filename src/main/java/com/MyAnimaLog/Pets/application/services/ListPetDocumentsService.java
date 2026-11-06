@@ -4,8 +4,7 @@ package com.MyAnimaLog.Pets.application.services;
 import com.MyAnimaLog.Pets.application.dto.PetDocumentSummaryResponse;
 import com.MyAnimaLog.Pets.application.ports.in.ListPetDocumentsUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
-import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,14 +16,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ListPetDocumentsService implements ListPetDocumentsUseCase {
 
-    private final PetRepositoryPort petRepository;
     private final PetDocumentRepositoryPort petDocumentRepository;
+    private final PetAccessPolicy petAccessPolicy;
 
+    /** Dueño, {@code EDITOR} o {@code VIEWER} pueden listar los documentos. */
     @Override
     public List<PetDocumentSummaryResponse> execute(UUID petId) {
-        petRepository.findById(petId)
-                .orElseThrow(() -> new PetNotFoundException(
-                        "Pet not found with id: " + petId));
+        petAccessPolicy.requireRead(petId);
 
         return petDocumentRepository.findAllByPetId(petId)
                 .stream()

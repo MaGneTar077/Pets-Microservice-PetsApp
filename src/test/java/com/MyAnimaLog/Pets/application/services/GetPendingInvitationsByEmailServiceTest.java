@@ -3,8 +3,10 @@ package com.MyAnimaLog.Pets.application.services;
 import com.MyAnimaLog.Pets.application.dto.GetPendingInvitationsByEmailRequest;
 import com.MyAnimaLog.Pets.application.dto.PetInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +20,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,6 +29,9 @@ class GetPendingInvitationsByEmailServiceTest {
 
     @Mock
     private PetInvitationRepositoryPort petInvitationRepositoryPort;
+
+    @Mock
+    private CurrentUserIdentity currentUserIdentity;
 
     @InjectMocks
     private GetPendingInvitationsByEmailService getPendingInvitationsByEmailService;
@@ -36,6 +42,7 @@ class GetPendingInvitationsByEmailServiceTest {
     @BeforeEach
     void setUp() {
         email = "invitado@email.com";
+        lenient().when(currentUserIdentity.resolveEmail(any())).thenReturn(email);
 
         invitation = PetInvitation.builder()
                 .id(UUID.randomUUID())
@@ -109,5 +116,30 @@ class GetPendingInvitationsByEmailServiceTest {
         List<PetInvitationResponse> result = getPendingInvitationsByEmailService.execute(request);
 
         assertThat(result).hasSize(2);
+    }
+
+    @Test
+    void execute_shouldUseTheTokenIdentity_whenCalledFromInvitationsMe() {
+        when(petInvitationRepositoryPort.findAllByEmailAndStatus(email, InvitationStatus.PENDING))
+                .thenReturn(List.of());
+
+        getPendingInvitationsByEmailService.execute(GetPendingInvitationsByEmailRequest.builder().build());
+
+        verify(currentUserIdentity).resolveEmail(null);
+        verify(petInvitationRepositoryPort).findAllByEmailAndStatus(email, InvitationStatus.PENDING);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenTheLegacyEmailIsUnrelated() {
+        String unrelatedEmail = "otro@correo.com";
+        when(currentUserIdentity.resolveEmail(unrelatedEmail)).thenThrow(new IdentityMismatchException());
+
+        GetPendingInvitationsByEmailRequest request =
+                GetPendingInvitationsByEmailRequest.builder().email(unrelatedEmail).build();
+
+        assertThatThrownBy(() -> getPendingInvitationsByEmailService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verifyNoInteractions(petInvitationRepositoryPort);
     }
 }

@@ -2,14 +2,16 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.UpdateRoleRequest;
 import com.MyAnimaLog.Pets.application.dto.UpdateRoleResponse;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.AccessNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.CannotGrantAccessToOwnerException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
-import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetUserAccess;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,13 +34,13 @@ import static org.mockito.Mockito.*;
 class UpdateRoleServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepositoryPort;
-
-    @Mock
     private PetUserAccessRepositoryPort petUserAccessRepositoryPort;
 
     @Mock
     private PublishPetEventUseCase publishPetEventUseCase;
+
+    @Mock
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private UpdateRoleService updateRoleService;
@@ -77,7 +79,7 @@ class UpdateRoleServiceTest {
     @Test
     void execute_shouldReturnUpdatedRole_whenRequestIsValid() {
         PetUserAccess updated = access.toBuilder().accessRole(Rol.VIEWER).build();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId))
                 .thenReturn(Optional.of(access));
         when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(updated);
@@ -100,7 +102,7 @@ class UpdateRoleServiceTest {
     @Test
     void execute_shouldCallRepositorySave_once() {
         PetUserAccess updated = access.toBuilder().accessRole(Rol.VIEWER).build();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId))
                 .thenReturn(Optional.of(access));
         when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(updated);
@@ -115,7 +117,7 @@ class UpdateRoleServiceTest {
 
     @Test
     void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         UpdateRoleRequest request = UpdateRoleRequest.builder()
                 .petId(petId).ownerId(ownerId).targetUserId(targetUserId).newRole(Rol.VIEWER).build();
@@ -127,22 +129,48 @@ class UpdateRoleServiceTest {
     }
 
     @Test
-    void execute_shouldThrowUnauthorizedPetAccessException_whenRequesterIsNotOwner() {
-        UUID otherUser = UUID.randomUUID();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldThrow403_whenRequesterIsNotOwner() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotBelongsToOwnerException());
 
         UpdateRoleRequest request = UpdateRoleRequest.builder()
-                .petId(petId).ownerId(otherUser).targetUserId(targetUserId).newRole(Rol.VIEWER).build();
+                .petId(petId).ownerId(ownerId).targetUserId(targetUserId).newRole(Rol.VIEWER).build();
 
         assertThatThrownBy(() -> updateRoleService.execute(request))
-                .isInstanceOf(UnauthorizedPetAccessException.class);
+                .isInstanceOf(PetNotBelongsToOwnerException.class);
+
+        verify(petUserAccessRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrow403_whenOwnerIdIsUnrelated() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireOwner(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
+
+        UpdateRoleRequest request = UpdateRoleRequest.builder()
+                .petId(petId).ownerId(unrelatedOwner).targetUserId(targetUserId).newRole(Rol.VIEWER).build();
+
+        assertThatThrownBy(() -> updateRoleService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verify(petUserAccessRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrow400_whenTargetIsTheOwner() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
+
+        UpdateRoleRequest request = UpdateRoleRequest.builder()
+                .petId(petId).ownerId(ownerId).targetUserId(ownerId).newRole(Rol.VIEWER).build();
+
+        assertThatThrownBy(() -> updateRoleService.execute(request))
+                .isInstanceOf(CannotGrantAccessToOwnerException.class);
 
         verify(petUserAccessRepositoryPort, never()).save(any());
     }
 
     @Test
     void execute_shouldThrowAccessNotFoundException_whenAccessDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, targetUserId))
                 .thenReturn(Optional.empty());
 
@@ -151,19 +179,6 @@ class UpdateRoleServiceTest {
 
         assertThatThrownBy(() -> updateRoleService.execute(request))
                 .isInstanceOf(AccessNotFoundException.class);
-
-        verify(petUserAccessRepositoryPort, never()).save(any());
-    }
-
-    @Test
-    void execute_shouldNotCallSave_whenPetNotFound() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
-
-        UpdateRoleRequest request = UpdateRoleRequest.builder()
-                .petId(petId).ownerId(ownerId).targetUserId(targetUserId).newRole(Rol.VIEWER).build();
-
-        assertThatThrownBy(() -> updateRoleService.execute(request))
-                .isInstanceOf(PetNotFoundException.class);
 
         verify(petUserAccessRepositoryPort, never()).save(any());
     }

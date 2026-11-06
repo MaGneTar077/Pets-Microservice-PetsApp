@@ -5,10 +5,13 @@ import com.MyAnimaLog.Pets.application.dto.RejectInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
+import com.MyAnimaLog.Pets.domain.exceptions.EmailNotVerifiedException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationAlreadyProcessedException;
+import com.MyAnimaLog.Pets.domain.exceptions.InvitationEmailMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationNotFoundException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
@@ -30,6 +33,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class RejectInvitationServiceTest {
 
+    private static final String INVITATION_EMAIL = "rechazado@email.com";
+
     @Mock
     private PetInvitationRepositoryPort petInvitationRepositoryPort;
 
@@ -38,6 +43,9 @@ class RejectInvitationServiceTest {
 
     @Mock
     private PublishPetEventUseCase publishPetEventUseCase;
+
+    @Mock
+    private CurrentUserIdentity currentUserIdentity;
 
     @InjectMocks
     private RejectInvitationService rejectInvitationService;
@@ -52,10 +60,13 @@ class RejectInvitationServiceTest {
         petId = UUID.randomUUID();
         token = UUID.randomUUID().toString();
 
+        lenient().when(currentUserIdentity.email()).thenReturn(INVITATION_EMAIL);
+        lenient().when(currentUserIdentity.emailVerified()).thenReturn(true);
+
         invitation = PetInvitation.builder()
                 .id(UUID.randomUUID())
                 .petId(petId)
-                .email("rechazado@email.com")
+                .email(INVITATION_EMAIL)
                 .accessRole(Rol.VIEWER)
                 .status(InvitationStatus.PENDING)
                 .token(token)
@@ -112,6 +123,47 @@ class RejectInvitationServiceTest {
 
         assertThatThrownBy(() -> rejectInvitationService.execute(request))
                 .isInstanceOf(InvitationNotFoundException.class);
+
+        verify(petInvitationRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrowInvitationEmailMismatchException_whenTokenEmailDiffersFromInvitation() {
+        when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
+        when(currentUserIdentity.email()).thenReturn("otro@correo.com");
+
+        RejectInvitationRequest request = RejectInvitationRequest.builder()
+                .token(token).build();
+
+        assertThatThrownBy(() -> rejectInvitationService.execute(request))
+                .isInstanceOf(InvitationEmailMismatchException.class);
+
+        verify(petInvitationRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldReject_whenTokenEmailDiffersOnlyInCase() {
+        when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
+        when(currentUserIdentity.email()).thenReturn(INVITATION_EMAIL.toUpperCase());
+        when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(invitation);
+        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+
+        RejectInvitationRequest request = RejectInvitationRequest.builder()
+                .token(token).build();
+
+        assertThatNoException().isThrownBy(() -> rejectInvitationService.execute(request));
+    }
+
+    @Test
+    void execute_shouldThrowEmailNotVerifiedException_whenTokenEmailIsNotVerified() {
+        when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
+        when(currentUserIdentity.emailVerified()).thenReturn(false);
+
+        RejectInvitationRequest request = RejectInvitationRequest.builder()
+                .token(token).build();
+
+        assertThatThrownBy(() -> rejectInvitationService.execute(request))
+                .isInstanceOf(EmailNotVerifiedException.class);
 
         verify(petInvitationRepositoryPort, never()).save(any());
     }

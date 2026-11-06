@@ -6,7 +6,10 @@ import com.MyAnimaLog.Pets.application.ports.in.AcceptInvitationUseCase;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.exceptions.AccessAlreadyGrantedException;
+import com.MyAnimaLog.Pets.domain.exceptions.EmailNotVerifiedException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationAlreadyProcessedException;
+import com.MyAnimaLog.Pets.domain.exceptions.InvitationEmailMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationNotFoundException;
 import com.MyAnimaLog.Pets.infrastructure.config.GlobalExceptionHandler;
 import com.MyAnimaLog.Pets.infrastructure.config.SecurityConfig;
@@ -31,6 +34,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/** Ruta oficial: POST /pets/invitations/{token}/accept. El alias /invitations/{token}/accept vive en LegacyAcceptInvitationControllerTest. */
 @WebMvcTest(
         controllers = AcceptInvitationController.class,
         excludeFilters = @ComponentScan.Filter(
@@ -82,7 +86,7 @@ class AcceptInvitationControllerTest {
 
         when(acceptInvitationUseCase.execute(any(AcceptInvitationRequest.class))).thenReturn(response);
 
-        mockMvc.perform(post("/invitations/{token}/accept", token)
+        mockMvc.perform(post("/pets/invitations/{token}/accept", token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buildBody(userId))
                         .with(csrf()))
@@ -94,11 +98,27 @@ class AcceptInvitationControllerTest {
     }
 
     @Test
+    void acceptInvitation_shouldReturn200_whenTheBodyDoesNotSendUserId() throws Exception {
+        AcceptInvitationResponse response = AcceptInvitationResponse.builder()
+                .invitationId(UUID.randomUUID())
+                .petId(petId)
+                .userId(userId)
+                .accessRole(Rol.EDITOR)
+                .status(InvitationStatus.ACCEPTED)
+                .build();
+
+        when(acceptInvitationUseCase.execute(any(AcceptInvitationRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/pets/invitations/{token}/accept", token).with(csrf()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void acceptInvitation_shouldReturn404_whenTokenNotFound() throws Exception {
         when(acceptInvitationUseCase.execute(any(AcceptInvitationRequest.class)))
                 .thenThrow(new InvitationNotFoundException());
 
-        mockMvc.perform(post("/invitations/{token}/accept", token)
+        mockMvc.perform(post("/pets/invitations/{token}/accept", token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buildBody(userId))
                         .with(csrf()))
@@ -111,7 +131,7 @@ class AcceptInvitationControllerTest {
         when(acceptInvitationUseCase.execute(any(AcceptInvitationRequest.class)))
                 .thenThrow(new InvitationAlreadyProcessedException());
 
-        mockMvc.perform(post("/invitations/{token}/accept", token)
+        mockMvc.perform(post("/pets/invitations/{token}/accept", token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buildBody(userId))
                         .with(csrf()))
@@ -124,11 +144,50 @@ class AcceptInvitationControllerTest {
         when(acceptInvitationUseCase.execute(any(AcceptInvitationRequest.class)))
                 .thenThrow(new AccessAlreadyGrantedException());
 
-        mockMvc.perform(post("/invitations/{token}/accept", token)
+        mockMvc.perform(post("/pets/invitations/{token}/accept", token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buildBody(userId))
                         .with(csrf()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void acceptInvitation_shouldReturn403_whenTokenEmailDoesNotMatchInvitation() throws Exception {
+        when(acceptInvitationUseCase.execute(any(AcceptInvitationRequest.class)))
+                .thenThrow(new InvitationEmailMismatchException());
+
+        mockMvc.perform(post("/pets/invitations/{token}/accept", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buildBody(userId))
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("INVITATION_EMAIL_MISMATCH"));
+    }
+
+    @Test
+    void acceptInvitation_shouldReturn403_whenEmailIsNotVerified() throws Exception {
+        when(acceptInvitationUseCase.execute(any(AcceptInvitationRequest.class)))
+                .thenThrow(new EmailNotVerifiedException());
+
+        mockMvc.perform(post("/pets/invitations/{token}/accept", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buildBody(userId))
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("EMAIL_NOT_VERIFIED"));
+    }
+
+    @Test
+    void acceptInvitation_shouldReturn403_whenUserIdIsUnrelatedToTheToken() throws Exception {
+        when(acceptInvitationUseCase.execute(any(AcceptInvitationRequest.class)))
+                .thenThrow(new IdentityMismatchException());
+
+        mockMvc.perform(post("/pets/invitations/{token}/accept", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buildBody(userId))
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("IDENTITY_MISMATCH"));
     }
 }

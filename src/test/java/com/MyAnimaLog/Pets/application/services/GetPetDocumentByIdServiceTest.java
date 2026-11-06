@@ -2,9 +2,13 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.GetPetDocumentResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.DocumentType;
+import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.DocumentNotBelongsToPetException;
 import com.MyAnimaLog.Pets.domain.exceptions.DocumentNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
+import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,10 +30,14 @@ class GetPetDocumentByIdServiceTest {
     @Mock
     private PetDocumentRepositoryPort documentRepository;
 
+    @Mock
+    private PetAccessPolicy petAccessPolicy;
+
     @InjectMocks
     private GetPetDocumentByIdService getPetDocumentByIdService;
 
     private PetDocument document;
+    private Pet pet;
     private UUID petId;
     private UUID documentId;
 
@@ -51,11 +59,20 @@ class GetPetDocumentByIdServiceTest {
                 .uploadedAt(LocalDateTime.now())
                 .active(true)
                 .build();
+
+        pet = Pet.builder()
+                .id(petId)
+                .ownerId(UUID.randomUUID())
+                .name("Firulais")
+                .species("Perro")
+                .sex(Sex.MALE)
+                .build();
     }
 
     @Test
-    void execute_shouldReturnDocument_whenDocumentExists() {
+    void execute_shouldReturnDocument_whenCallerIsTheOwner() {
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
 
         GetPetDocumentResponse result = getPetDocumentByIdService.execute(petId, documentId);
 
@@ -67,8 +84,34 @@ class GetPetDocumentByIdServiceTest {
     }
 
     @Test
+    void execute_shouldReturnDocument_whenCallerIsAnEditor() {
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
+
+        assertThat(getPetDocumentByIdService.execute(petId, documentId)).isNotNull();
+    }
+
+    @Test
+    void execute_shouldReturnDocument_whenCallerIsAViewer() {
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
+
+        assertThat(getPetDocumentByIdService.execute(petId, documentId)).isNotNull();
+    }
+
+    @Test
+    void execute_shouldThrow403_whenCallerHasNoAccess() {
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new UnauthorizedPetAccessException());
+
+        assertThatThrownBy(() -> getPetDocumentByIdService.execute(petId, documentId))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+    }
+
+    @Test
     void execute_shouldCallFindById_once() {
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
 
         getPetDocumentByIdService.execute(petId, documentId);
 
@@ -93,5 +136,7 @@ class GetPetDocumentByIdServiceTest {
         assertThatThrownBy(() -> getPetDocumentByIdService.execute(differentPetId, documentId))
                 .isInstanceOf(DocumentNotBelongsToPetException.class)
                 .hasMessageContaining("does not belong to pet");
+
+        verifyNoInteractions(petAccessPolicy);
     }
 }

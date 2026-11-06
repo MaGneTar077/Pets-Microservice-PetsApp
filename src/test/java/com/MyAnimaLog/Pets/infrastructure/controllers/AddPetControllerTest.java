@@ -106,16 +106,16 @@ class AddPetControllerTest {
                 .andExpect(jsonPath("$.name").exists());
     }
 
+    /** PETS-02: el dueño sale del token, así que el body ya no tiene que mandarlo. */
     @Test
-    void addPet_shouldReturn400_whenOwnerIdIsNull() throws Exception {
+    void addPet_shouldReturn201_whenOwnerIdIsNotSent() throws Exception {
         request.setOwnerId(null);
 
         mockMvc.perform(post("/pets")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.ownerId").exists());
+                .andExpect(status().isCreated());
     }
 
     @Test

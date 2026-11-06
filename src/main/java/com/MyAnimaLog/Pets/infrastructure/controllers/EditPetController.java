@@ -19,7 +19,7 @@ public class EditPetController {
     @PatchMapping("/{petId}")
     public ResponseEntity<EditPetResponse> editPet(
             @PathVariable UUID petId,
-            @RequestParam UUID ownerId,
+            @RequestParam(required = false) UUID ownerId,
             @Valid @RequestBody EditPetRequest request
     ) {
 

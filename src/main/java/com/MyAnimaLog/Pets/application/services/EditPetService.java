@@ -6,10 +6,9 @@ import com.MyAnimaLog.Pets.application.dto.PetEvent;
 import com.MyAnimaLog.Pets.application.ports.in.EditPetUseCase;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidPetDataException;
-import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
-import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import org.springframework.stereotype.Service;
 
@@ -23,20 +22,26 @@ public class EditPetService  implements EditPetUseCase {
     private final PetRepositoryPort petRepository;
     private final PublishPetEventUseCase publishPetEventUseCase;
 
-    public EditPetService(PetRepositoryPort petRepository, PublishPetEventUseCase publishPetEventUseCase) {
+    private final PetAccessPolicy petAccessPolicy;
+
+    public EditPetService(PetRepositoryPort petRepository,
+                          PublishPetEventUseCase publishPetEventUseCase,
+                          PetAccessPolicy petAccessPolicy) {
         this.petRepository = petRepository;
         this.publishPetEventUseCase = publishPetEventUseCase;
+        this.petAccessPolicy = petAccessPolicy;
     }
 
+    /**
+     * @param ownerId <b>obsoleto</b> (PETS-02): se acepta si coincide con el token o con el dueño
+     *                real de la mascota (así lo mandaba la app vieja para que un {@code EDITOR}
+     *                pudiera editar); cualquier otro valor es 403. Quien autoriza de verdad es
+     *                {@link PetAccessPolicy}: dueño o {@code EDITOR}.
+     */
     @Override
     public EditPetResponse editPet(UUID petId, UUID ownerId, EditPetRequest request) {
 
-        Pet pet = petRepository.findById(petId)
-                .orElseThrow(() -> new PetNotFoundException(petId.toString()));
-
-        if (!pet.getOwnerId().equals(ownerId)) {
-            throw new PetNotBelongsToOwnerException();
-        }
+        Pet pet = petAccessPolicy.requireWrite(petId, ownerId);
 
         validateRequest(request);
 

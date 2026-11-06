@@ -20,7 +20,7 @@ public class GetDownloadUrlController {
     public ResponseEntity<GetDownloadUrlResponse> getDownloadUrl(
             @PathVariable UUID petId,
             @PathVariable UUID documentId,
-            @RequestParam UUID requestedBy) {
+            @RequestParam(required = false) UUID requestedBy) {
 
         GetDownloadUrlRequest request = GetDownloadUrlRequest.builder()
                 .petId(petId)

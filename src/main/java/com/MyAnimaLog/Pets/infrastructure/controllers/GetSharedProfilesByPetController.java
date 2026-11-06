@@ -20,7 +20,7 @@ public class GetSharedProfilesByPetController {
     @GetMapping("/{petId}/shared")
     public ResponseEntity<List<SharedProfileResponse>> getSharedProfilesByPet(
             @PathVariable UUID petId,
-            @RequestParam UUID ownerId) {
+            @RequestParam(required = false) UUID ownerId) {
 
         GetSharedProfilesByPetRequest request = GetSharedProfilesByPetRequest.builder()
                 .petId(petId)

@@ -25,7 +25,7 @@ public class UploadPetDocumentController {
     )
     public ResponseEntity<UploadPetDocumentResponse> uploadDocument(
             @PathVariable UUID petId,
-            @RequestParam UUID uploadedBy,
+            @RequestParam(required = false) UUID uploadedBy,
             @RequestParam String title,
             @RequestParam(required = false) String description,
             @RequestParam DocumentType documentType,

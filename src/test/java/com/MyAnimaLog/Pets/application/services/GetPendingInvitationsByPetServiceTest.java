@@ -3,12 +3,13 @@ package com.MyAnimaLog.Pets.application.services;
 import com.MyAnimaLog.Pets.application.dto.GetPendingInvitationsByPetRequest;
 import com.MyAnimaLog.Pets.application.dto.PetInvitationResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotBelongsToOwnerException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
-import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +23,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -32,10 +32,10 @@ import static org.mockito.Mockito.*;
 class GetPendingInvitationsByPetServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepositoryPort;
+    private PetInvitationRepositoryPort petInvitationRepositoryPort;
 
     @Mock
-    private PetInvitationRepositoryPort petInvitationRepositoryPort;
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private GetPendingInvitationsByPetService getPendingInvitationsByPetService;
@@ -74,7 +74,7 @@ class GetPendingInvitationsByPetServiceTest {
 
     @Test
     void execute_shouldReturnList_whenRequestIsValid() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findAllByPetIdAndStatus(petId, InvitationStatus.PENDING))
                 .thenReturn(List.of(invitation));
 
@@ -92,7 +92,7 @@ class GetPendingInvitationsByPetServiceTest {
 
     @Test
     void execute_shouldReturnEmptyList_whenNoPendingInvitations() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findAllByPetIdAndStatus(petId, InvitationStatus.PENDING))
                 .thenReturn(Collections.emptyList());
 
@@ -106,7 +106,7 @@ class GetPendingInvitationsByPetServiceTest {
 
     @Test
     void execute_shouldCallRepositoryFindAllByPetIdAndStatus_once() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenReturn(pet);
         when(petInvitationRepositoryPort.findAllByPetIdAndStatus(petId, InvitationStatus.PENDING))
                 .thenReturn(List.of(invitation));
 
@@ -121,7 +121,7 @@ class GetPendingInvitationsByPetServiceTest {
 
     @Test
     void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         GetPendingInvitationsByPetRequest request = GetPendingInvitationsByPetRequest.builder()
                 .petId(petId).ownerId(ownerId).build();
@@ -133,15 +133,28 @@ class GetPendingInvitationsByPetServiceTest {
     }
 
     @Test
-    void execute_shouldThrowUnauthorizedPetAccessException_whenRequesterIsNotOwner() {
-        UUID otherUser = UUID.randomUUID();
-        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldThrow403_whenRequesterIsNotOwner() {
+        when(petAccessPolicy.requireOwner(petId, ownerId)).thenThrow(new PetNotBelongsToOwnerException());
 
         GetPendingInvitationsByPetRequest request = GetPendingInvitationsByPetRequest.builder()
-                .petId(petId).ownerId(otherUser).build();
+                .petId(petId).ownerId(ownerId).build();
 
         assertThatThrownBy(() -> getPendingInvitationsByPetService.execute(request))
-                .isInstanceOf(UnauthorizedPetAccessException.class);
+                .isInstanceOf(PetNotBelongsToOwnerException.class);
+
+        verify(petInvitationRepositoryPort, never()).findAllByPetIdAndStatus(any(), any());
+    }
+
+    @Test
+    void execute_shouldThrow403_whenOwnerIdIsUnrelated() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireOwner(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
+
+        GetPendingInvitationsByPetRequest request = GetPendingInvitationsByPetRequest.builder()
+                .petId(petId).ownerId(unrelatedOwner).build();
+
+        assertThatThrownBy(() -> getPendingInvitationsByPetService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
 
         verify(petInvitationRepositoryPort, never()).findAllByPetIdAndStatus(any(), any());
     }

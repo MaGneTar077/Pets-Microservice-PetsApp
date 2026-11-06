@@ -20,7 +20,7 @@ public class GetPendingInvitationsByPetController {
     @GetMapping("/{petId}/invitations/pending")
     public ResponseEntity<List<PetInvitationResponse>> getPendingInvitations(
             @PathVariable UUID petId,
-            @RequestParam UUID ownerId) {
+            @RequestParam(required = false) UUID ownerId) {
 
         GetPendingInvitationsByPetRequest request = GetPendingInvitationsByPetRequest.builder()
                 .petId(petId)

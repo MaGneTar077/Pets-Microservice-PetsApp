@@ -20,7 +20,7 @@ public class RevokeAccessController {
     public ResponseEntity<RevokeAccessResponse> revokeAccess(
             @PathVariable UUID petId,
             @PathVariable UUID targetUserId,
-            @RequestParam UUID ownerId) {
+            @RequestParam(required = false) UUID ownerId) {
 
         RevokeAccessRequest request = RevokeAccessRequest.builder()
                 .petId(petId)

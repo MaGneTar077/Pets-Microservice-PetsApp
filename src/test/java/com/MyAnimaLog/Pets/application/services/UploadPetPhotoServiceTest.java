@@ -5,9 +5,13 @@ import com.MyAnimaLog.Pets.application.dto.UploadPetPhotoResponse;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetPhotoStoragePort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.FileSizeExceededException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidImageFormatException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,12 +23,11 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.NoSuchElementException;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +41,9 @@ class UploadPetPhotoServiceTest {
 
     @Mock
     private PublishPetEventUseCase publishPetEventUseCase;
+
+    @Mock
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private UploadPetPhotoService uploadPetPhotoService;
@@ -75,7 +81,7 @@ class UploadPetPhotoServiceTest {
     void execute_shouldReturnResponse_whenRequestIsValid() {
         String photoUrl = "https://supabase.co/storage/v1/object/public/pet-photos/pets/" + petId + "/profile.jpg";
 
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
         when(photoStorage.upload(eq(petId), any())).thenReturn(photoUrl);
         when(petRepository.save(any(Pet.class))).thenReturn(pet.toBuilder().photoUrl(photoUrl).build());
 
@@ -94,10 +100,10 @@ class UploadPetPhotoServiceTest {
     }
 
     @Test
-    void execute_shouldCallFindByIdAndOwnerId_once() {
+    void execute_shouldCheckWriteAccess_once() {
         String photoUrl = "https://supabase.co/storage/v1/object/public/pet-photos/pets/" + petId + "/profile.jpg";
 
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
         when(photoStorage.upload(eq(petId), any())).thenReturn(photoUrl);
         when(petRepository.save(any(Pet.class))).thenReturn(pet.toBuilder().photoUrl(photoUrl).build());
 
@@ -106,14 +112,81 @@ class UploadPetPhotoServiceTest {
 
         uploadPetPhotoService.execute(request);
 
-        verify(petRepository, times(1)).findByIdAndOwnerId(petId, ownerId);
+        verify(petAccessPolicy, times(1)).requireWrite(petId, ownerId);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenCallerHasNoWriteAccess() {
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenThrow(new UnauthorizedPetAccessException());
+
+        UploadPetPhotoRequest request = UploadPetPhotoRequest.builder()
+                .petId(petId).ownerId(ownerId).file(validFile).build();
+
+        assertThatThrownBy(() -> uploadPetPhotoService.execute(request))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+
+        verifyNoInteractions(photoStorage);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenTheRequestSendsAnUnrelatedOwnerId() {
+        UUID unrelatedOwner = UUID.randomUUID();
+        when(petAccessPolicy.requireWrite(petId, unrelatedOwner)).thenThrow(new IdentityMismatchException());
+
+        UploadPetPhotoRequest request = UploadPetPhotoRequest.builder()
+                .petId(petId).ownerId(unrelatedOwner).file(validFile).build();
+
+        assertThatThrownBy(() -> uploadPetPhotoService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verifyNoInteractions(photoStorage);
+    }
+
+    /** La app vieja mandaba el ownerId real de la mascota para que un EDITOR pudiera subir foto. */
+    @Test
+    void execute_shouldSucceed_whenEditorSendsTheRealOwnerId() {
+        String photoUrl = "https://supabase.co/storage/v1/object/public/pet-photos/pets/" + petId + "/profile.jpg";
+
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
+        when(photoStorage.upload(eq(petId), any())).thenReturn(photoUrl);
+        when(petRepository.save(any(Pet.class))).thenReturn(pet.toBuilder().photoUrl(photoUrl).build());
+
+        UploadPetPhotoRequest request = UploadPetPhotoRequest.builder()
+                .petId(petId).ownerId(ownerId).file(validFile).build();
+
+        assertThat(uploadPetPhotoService.execute(request).getPhotoUrl()).isEqualTo(photoUrl);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenViewerSendsTheRealOwnerId() {
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenThrow(new UnauthorizedPetAccessException());
+
+        UploadPetPhotoRequest request = UploadPetPhotoRequest.builder()
+                .petId(petId).ownerId(ownerId).file(validFile).build();
+
+        assertThatThrownBy(() -> uploadPetPhotoService.execute(request))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+    }
+
+    @Test
+    void execute_shouldWork_whenTheRequestDoesNotSendOwnerId() {
+        String photoUrl = "https://supabase.co/storage/v1/object/public/pet-photos/pets/" + petId + "/profile.jpg";
+
+        when(petAccessPolicy.requireWrite(petId, null)).thenReturn(pet);
+        when(photoStorage.upload(eq(petId), any())).thenReturn(photoUrl);
+        when(petRepository.save(any(Pet.class))).thenReturn(pet.toBuilder().photoUrl(photoUrl).build());
+
+        UploadPetPhotoRequest request = UploadPetPhotoRequest.builder()
+                .petId(petId).file(validFile).build();
+
+        assertThat(uploadPetPhotoService.execute(request).getPhotoUrl()).isEqualTo(photoUrl);
     }
 
     @Test
     void execute_shouldCallStorageUpload_once() {
         String photoUrl = "https://supabase.co/storage/v1/object/public/pet-photos/pets/" + petId + "/profile.jpg";
 
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
         when(photoStorage.upload(eq(petId), any())).thenReturn(photoUrl);
         when(petRepository.save(any(Pet.class))).thenReturn(pet.toBuilder().photoUrl(photoUrl).build());
 
@@ -129,7 +202,7 @@ class UploadPetPhotoServiceTest {
     void execute_shouldCallRepositorySave_once() {
         String photoUrl = "https://supabase.co/storage/v1/object/public/pet-photos/pets/" + petId + "/profile.jpg";
 
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenReturn(pet);
         when(photoStorage.upload(eq(petId), any())).thenReturn(photoUrl);
         when(petRepository.save(any(Pet.class))).thenReturn(pet.toBuilder().photoUrl(photoUrl).build());
 
@@ -182,26 +255,26 @@ class UploadPetPhotoServiceTest {
     }
 
     @Test
-    void execute_shouldThrowNoSuchElementException_whenPetNotFound() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.empty());
+    void execute_shouldThrowPetNotFound_whenPetDoesNotExist() {
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         UploadPetPhotoRequest request = UploadPetPhotoRequest.builder()
                 .petId(petId).ownerId(ownerId).file(validFile).build();
 
         assertThatThrownBy(() -> uploadPetPhotoService.execute(request))
-                .isInstanceOf(NoSuchElementException.class)
+                .isInstanceOf(PetNotFoundException.class)
                 .hasMessageContaining("Pet not found");
     }
 
     @Test
     void execute_shouldNotCallStorage_whenPetNotFound() {
-        when(petRepository.findByIdAndOwnerId(petId, ownerId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireWrite(petId, ownerId)).thenThrow(new PetNotFoundException(petId));
 
         UploadPetPhotoRequest request = UploadPetPhotoRequest.builder()
                 .petId(petId).ownerId(ownerId).file(validFile).build();
 
         assertThatThrownBy(() -> uploadPetPhotoService.execute(request))
-                .isInstanceOf(NoSuchElementException.class);
+                .isInstanceOf(PetNotFoundException.class);
 
         verify(photoStorage, never()).upload(any(), any());
     }

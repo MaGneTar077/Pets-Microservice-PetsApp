@@ -5,11 +5,15 @@ import com.MyAnimaLog.Pets.application.dto.UploadPetDocumentResponse;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentStoragePort;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.DocumentType;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.FileSizeExceededException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidFileException;
+import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,8 +26,6 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.NoSuchElementException;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -34,9 +36,6 @@ import static org.mockito.Mockito.*;
 class UploadPetDocumentServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepository;
-
-    @Mock
     private PetDocumentRepositoryPort documentRepository;
 
     @Mock
@@ -44,6 +43,12 @@ class UploadPetDocumentServiceTest {
 
     @Mock
     private PublishPetEventUseCase publishPetEventUseCase;
+
+    @Mock
+    private CurrentUserIdentity currentUserIdentity;
+
+    @Mock
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private UploadPetDocumentService uploadPetDocumentService;
@@ -62,6 +67,8 @@ class UploadPetDocumentServiceTest {
         petId = UUID.randomUUID();
         uploadedBy = UUID.randomUUID();
         fileUrl = "https://supabase.co/storage/v1/object/public/pet-documents/pets/" + petId + "/documents/doc.pdf";
+
+        lenient().when(currentUserIdentity.resolveUserId(any())).thenReturn(uploadedBy);
 
         pet = Pet.builder()
                 .id(petId)
@@ -100,8 +107,8 @@ class UploadPetDocumentServiceTest {
     }
 
     @Test
-    void execute_shouldReturnResponse_whenPdfIsValid() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldReturnResponse_whenCallerIsTheOwner() {
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
         when(documentStorage.upload(any(), any(), any())).thenReturn(fileUrl);
         when(documentRepository.save(any(PetDocument.class))).thenReturn(savedDocument);
 
@@ -114,8 +121,61 @@ class UploadPetDocumentServiceTest {
     }
 
     @Test
+    void execute_shouldReturnResponse_whenCallerIsAnEditor() {
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
+        when(documentStorage.upload(any(), any(), any())).thenReturn(fileUrl);
+        when(documentRepository.save(any(PetDocument.class))).thenReturn(savedDocument);
+
+        assertThat(uploadPetDocumentService.execute(buildRequest(validPdf))).isNotNull();
+    }
+
+    @Test
+    void execute_shouldThrow403_whenCallerIsAViewer() {
+        when(petAccessPolicy.requireWrite(petId)).thenThrow(new UnauthorizedPetAccessException());
+
+        assertThatThrownBy(() -> uploadPetDocumentService.execute(buildRequest(validPdf)))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+
+        verifyNoInteractions(documentStorage);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenCallerHasNoAccess() {
+        when(petAccessPolicy.requireWrite(petId)).thenThrow(new UnauthorizedPetAccessException());
+
+        assertThatThrownBy(() -> uploadPetDocumentService.execute(buildRequest(validPdf)))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenUploadedByIsUnrelatedToTheToken() {
+        UUID unrelatedUser = UUID.randomUUID();
+        when(currentUserIdentity.resolveUserId(unrelatedUser)).thenThrow(new IdentityMismatchException());
+
+        UploadPetDocumentRequest request = UploadPetDocumentRequest.builder()
+                .petId(petId).uploadedBy(unrelatedUser).title("Vacuna rabia")
+                .documentType(DocumentType.VACCINE).file(validPdf).build();
+
+        assertThatThrownBy(() -> uploadPetDocumentService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verifyNoInteractions(petAccessPolicy, documentStorage);
+    }
+
+    @Test
+    void execute_shouldUseTheTokenIdentity_asUploadedBy() {
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
+        when(documentStorage.upload(any(), any(), any())).thenReturn(fileUrl);
+        when(documentRepository.save(any(PetDocument.class))).thenReturn(savedDocument);
+
+        uploadPetDocumentService.execute(buildRequest(validPdf));
+
+        verify(documentRepository).save(argThat(doc -> doc.getUploadedBy().equals(uploadedBy)));
+    }
+
+    @Test
     void execute_shouldReturnResponse_whenImageIsValid() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
         when(documentStorage.upload(any(), any(), any())).thenReturn(fileUrl);
         when(documentRepository.save(any(PetDocument.class))).thenReturn(savedDocument);
 
@@ -128,7 +188,7 @@ class UploadPetDocumentServiceTest {
 
     @Test
     void execute_shouldReturnResponse_whenDocxIsValid() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
         when(documentStorage.upload(any(), any(), any())).thenReturn(fileUrl);
         when(documentRepository.save(any(PetDocument.class))).thenReturn(savedDocument);
 
@@ -141,7 +201,7 @@ class UploadPetDocumentServiceTest {
 
     @Test
     void execute_shouldCallStorageUpload_once() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
         when(documentStorage.upload(any(), any(), any())).thenReturn(fileUrl);
         when(documentRepository.save(any(PetDocument.class))).thenReturn(savedDocument);
 
@@ -152,7 +212,7 @@ class UploadPetDocumentServiceTest {
 
     @Test
     void execute_shouldCallRepositorySave_once() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
         when(documentStorage.upload(any(), any(), any())).thenReturn(fileUrl);
         when(documentRepository.save(any(PetDocument.class))).thenReturn(savedDocument);
 
@@ -163,7 +223,7 @@ class UploadPetDocumentServiceTest {
 
     @Test
     void execute_shouldSaveDocumentWithActiveTrue() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireWrite(petId)).thenReturn(pet);
         when(documentStorage.upload(any(), any(), any())).thenReturn(fileUrl);
         when(documentRepository.save(any(PetDocument.class))).thenReturn(savedDocument);
 
@@ -206,20 +266,19 @@ class UploadPetDocumentServiceTest {
     }
 
     @Test
-    void execute_shouldThrowNoSuchElementException_whenPetNotFound() {
-        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+    void execute_shouldThrowPetNotFoundException_whenPetNotFound() {
+        when(petAccessPolicy.requireWrite(petId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() -> uploadPetDocumentService.execute(buildRequest(validPdf)))
-                .isInstanceOf(NoSuchElementException.class)
-                .hasMessageContaining("Pet not found");
+                .isInstanceOf(PetNotFoundException.class);
     }
 
     @Test
     void execute_shouldNotCallStorage_whenPetNotFound() {
-        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireWrite(petId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() -> uploadPetDocumentService.execute(buildRequest(validPdf)))
-                .isInstanceOf(NoSuchElementException.class);
+                .isInstanceOf(PetNotFoundException.class);
 
         verify(documentStorage, never()).upload(any(), any(), any());
     }

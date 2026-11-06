@@ -13,7 +13,13 @@
 3. Crear `AuthenticatedUserPort` + adaptador (mismo diseño que Veterinary §4.4).
 4. Eliminar `jjwt` y `JWT_SECRET` al terminar.
 
-## PETS-02 — Identidad desde el token en lugar del body
+## PETS-02 — Identidad desde el token en lugar del body *(hecho, rama `feature/pets-02-identidad-desde-token`)*
+
+> Implementado íntegramente: `CurrentUserIdentity` + `PetAccessPolicy` en `application/security/`,
+> matriz de roles OWNER/EDITOR/VIEWER, `code` en las respuestas de error, 403 vs 404 consistente.
+> Documentado en `CLAUDE.md` y `docs/integracion/PETS_CAMBIOS_PARA_FRONTEND.md`. Los campos legados
+> (`ownerId`, `userId`, `uploadedBy`, `requestedBy`, header `X-User-Email`) se mantienen como alias
+> `@Deprecated` sin fecha de eliminación — no se borró ninguna ruta histórica.
 
 Reemplazar por `sub` del token **todos** estos campos, y quitarlos de los DTO de request:
 

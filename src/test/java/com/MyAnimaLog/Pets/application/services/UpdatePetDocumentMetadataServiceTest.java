@@ -3,10 +3,14 @@ package com.MyAnimaLog.Pets.application.services;
 import com.MyAnimaLog.Pets.application.dto.UpdatePetDocumentMetadataRequest;
 import com.MyAnimaLog.Pets.application.dto.UpdatePetDocumentMetadataResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.DocumentType;
+import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.DocumentNotBelongsToPetException;
 import com.MyAnimaLog.Pets.domain.exceptions.DocumentNotFoundException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidDocumentException;
+import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
+import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,22 +33,30 @@ class UpdatePetDocumentMetadataServiceTest {
     @Mock
     private PetDocumentRepositoryPort documentRepository;
 
+    @Mock
+    private PetAccessPolicy petAccessPolicy;
+
     @InjectMocks
     private UpdatePetDocumentMetadataService updatePetDocumentMetadataService;
 
     private PetDocument document;
+    private Pet pet;
     private UUID petId;
     private UUID documentId;
+    private UUID uploadedBy;
 
     @BeforeEach
     void setUp() {
         petId = UUID.randomUUID();
         documentId = UUID.randomUUID();
+        uploadedBy = UUID.randomUUID();
+
+        lenient().when(petAccessPolicy.requireOwnerOrUploader(any(), any())).thenReturn(mock(Pet.class));
 
         document = PetDocument.builder()
                 .id(documentId)
                 .petId(petId)
-                .uploadedBy(UUID.randomUUID())
+                .uploadedBy(uploadedBy)
                 .title("Vacuna rabia")
                 .description("Vacuna anual")
                 .fileUrl("https://supabase.co/storage/v1/object/public/pet-documents/pets/" + petId + "/documents/" + documentId + ".pdf")
@@ -54,6 +66,68 @@ class UpdatePetDocumentMetadataServiceTest {
                 .uploadedAt(LocalDateTime.now())
                 .active(true)
                 .build();
+
+        pet = Pet.builder()
+                .id(petId)
+                .ownerId(UUID.randomUUID())
+                .name("Firulais")
+                .species("Perro")
+                .sex(Sex.MALE)
+                .build();
+    }
+
+    @Test
+    void execute_shouldUpdate_whenCallerIsTheOwner() {
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireOwnerOrUploader(petId, uploadedBy)).thenReturn(pet);
+        when(documentRepository.save(any(PetDocument.class)))
+                .thenReturn(document.toBuilder().title("Nuevo titulo").build());
+
+        UpdatePetDocumentMetadataRequest request = UpdatePetDocumentMetadataRequest.builder()
+                .petId(petId).documentId(documentId).title("Nuevo titulo").build();
+
+        assertThat(updatePetDocumentMetadataService.execute(request).getTitle()).isEqualTo("Nuevo titulo");
+    }
+
+    @Test
+    void execute_shouldUpdate_whenCallerIsTheEditorWhoUploadedIt() {
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireOwnerOrUploader(petId, uploadedBy)).thenReturn(pet);
+        when(documentRepository.save(any(PetDocument.class)))
+                .thenReturn(document.toBuilder().title("Nuevo titulo").build());
+
+        UpdatePetDocumentMetadataRequest request = UpdatePetDocumentMetadataRequest.builder()
+                .petId(petId).documentId(documentId).title("Nuevo titulo").build();
+
+        assertThat(updatePetDocumentMetadataService.execute(request)).isNotNull();
+    }
+
+    @Test
+    void execute_shouldThrow403_whenEditorDidNotUploadTheDocument() {
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireOwnerOrUploader(petId, uploadedBy))
+                .thenThrow(new UnauthorizedPetAccessException());
+
+        UpdatePetDocumentMetadataRequest request = UpdatePetDocumentMetadataRequest.builder()
+                .petId(petId).documentId(documentId).title("Nuevo titulo").build();
+
+        assertThatThrownBy(() -> updatePetDocumentMetadataService.execute(request))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrow403_whenCallerIsAViewer() {
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(petAccessPolicy.requireOwnerOrUploader(petId, uploadedBy))
+                .thenThrow(new UnauthorizedPetAccessException());
+
+        UpdatePetDocumentMetadataRequest request = UpdatePetDocumentMetadataRequest.builder()
+                .petId(petId).documentId(documentId).title("Nuevo titulo").build();
+
+        assertThatThrownBy(() -> updatePetDocumentMetadataService.execute(request))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
     }
 
     @Test
@@ -153,6 +227,8 @@ class UpdatePetDocumentMetadataServiceTest {
         assertThatThrownBy(() -> updatePetDocumentMetadataService.execute(request))
                 .isInstanceOf(DocumentNotBelongsToPetException.class)
                 .hasMessageContaining("does not belong to pet");
+
+        verifyNoInteractions(petAccessPolicy);
     }
 
     @Test

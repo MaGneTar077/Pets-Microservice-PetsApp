@@ -5,6 +5,7 @@ import com.MyAnimaLog.Pets.application.dto.DeletePetPhotoResponse;
 import com.MyAnimaLog.Pets.application.ports.in.DeletePetPhotoUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetPhotoStoragePort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidPetDataException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import lombok.RequiredArgsConstructor;
@@ -19,14 +20,16 @@ public class DeletePetPhotoService implements DeletePetPhotoUseCase {
 
     private final PetRepositoryPort petRepository;
     private final PetPhotoStoragePort photoStorage;
+    private final PetAccessPolicy petAccessPolicy;
 
+    /**
+     * {@code request.ownerId} es obsoleto (PETS-02): se acepta si coincide con el token o con el
+     * dueño real de la mascota; cualquier otro valor es 403. Autoriza dueño o {@code EDITOR}.
+     */
     @Override
     public DeletePetPhotoResponse execute(DeletePetPhotoRequest request) {
 
-        Pet pet = petRepository
-                .findByIdAndOwnerId(request.getPetId(), request.getOwnerId())
-                .orElseThrow(() -> new NoSuchElementException(
-                        "Pet not found or does not belong to the owner"));
+        Pet pet = petAccessPolicy.requireWrite(request.getPetId(), request.getOwnerId());
 
         if (pet.getPhotoUrl() == null || pet.getPhotoUrl().isBlank()) {
             throw new InvalidPetDataException("Pet does not have a photo to delete");

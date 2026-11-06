@@ -17,9 +17,10 @@ public class AcceptInvitationController {
     @PostMapping("/{token}/accept")
     public ResponseEntity<AcceptInvitationResponse> acceptInvitation(
             @PathVariable String token,
-            @RequestBody AcceptInvitationRequest request) {
+            @RequestBody(required = false) AcceptInvitationRequest request) {
 
-        AcceptInvitationRequest fullRequest = request.toBuilder()
+        AcceptInvitationRequest fullRequest = (request != null ? request : new AcceptInvitationRequest())
+                .toBuilder()
                 .token(token)
                 .build();
 

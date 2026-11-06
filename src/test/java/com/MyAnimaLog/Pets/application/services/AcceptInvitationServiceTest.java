@@ -2,15 +2,20 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.AcceptInvitationRequest;
 import com.MyAnimaLog.Pets.application.dto.AcceptInvitationResponse;
+import com.MyAnimaLog.Pets.application.dto.AuthenticatedUser;
 import com.MyAnimaLog.Pets.application.ports.in.PublishPetEventUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetInvitationRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
 import com.MyAnimaLog.Pets.application.ports.out.PetUserAccessRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.CurrentUserIdentity;
 import com.MyAnimaLog.Pets.domain.enums.InvitationStatus;
 import com.MyAnimaLog.Pets.domain.enums.Rol;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.AccessAlreadyGrantedException;
+import com.MyAnimaLog.Pets.domain.exceptions.EmailNotVerifiedException;
+import com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationAlreadyProcessedException;
+import com.MyAnimaLog.Pets.domain.exceptions.InvitationEmailMismatchException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvitationNotFoundException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetInvitation;
@@ -33,6 +38,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AcceptInvitationServiceTest {
 
+    private static final String INVITATION_EMAIL = "invitado@email.com";
+
     @Mock
     private PetInvitationRepositoryPort petInvitationRepositoryPort;
 
@@ -44,6 +51,9 @@ class AcceptInvitationServiceTest {
 
     @Mock
     private PublishPetEventUseCase publishPetEventUseCase;
+
+    @Mock
+    private CurrentUserIdentity currentUserIdentity;
 
     @InjectMocks
     private AcceptInvitationService acceptInvitationService;
@@ -60,10 +70,14 @@ class AcceptInvitationServiceTest {
         userId = UUID.randomUUID();
         token = UUID.randomUUID().toString();
 
+        lenient().when(currentUserIdentity.resolveUserId(any())).thenReturn(userId);
+        lenient().when(currentUserIdentity.current())
+                .thenReturn(new AuthenticatedUser(userId, INVITATION_EMAIL, true));
+
         invitation = PetInvitation.builder()
                 .id(UUID.randomUUID())
                 .petId(petId)
-                .email("invitado@email.com")
+                .email(INVITATION_EMAIL)
                 .accessRole(Rol.EDITOR)
                 .status(InvitationStatus.PENDING)
                 .token(token)
@@ -100,6 +114,35 @@ class AcceptInvitationServiceTest {
         assertThat(result.getUserId()).isEqualTo(userId);
         assertThat(result.getAccessRole()).isEqualTo(Rol.EDITOR);
         assertThat(result.getStatus()).isEqualTo(InvitationStatus.ACCEPTED);
+    }
+
+    @Test
+    void execute_shouldWork_whenTheRequestDoesNotSendUserId() {
+        when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
+        when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, userId)).thenReturn(Optional.empty());
+        when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(invitation);
+        when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(mock(PetUserAccess.class));
+        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+
+        AcceptInvitationResponse result = acceptInvitationService.execute(
+                AcceptInvitationRequest.builder().token(token).build());
+
+        assertThat(result.getUserId()).isEqualTo(userId);
+        verify(currentUserIdentity).resolveUserId(null);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenTheRequestSendsAnUnrelatedUserId() {
+        UUID unrelatedUser = UUID.randomUUID();
+        when(currentUserIdentity.resolveUserId(unrelatedUser)).thenThrow(new IdentityMismatchException());
+
+        AcceptInvitationRequest request = AcceptInvitationRequest.builder()
+                .token(token).userId(unrelatedUser).build();
+
+        assertThatThrownBy(() -> acceptInvitationService.execute(request))
+                .isInstanceOf(IdentityMismatchException.class);
+
+        verify(petUserAccessRepositoryPort, never()).save(any());
     }
 
     @Test
@@ -143,6 +186,52 @@ class AcceptInvitationServiceTest {
 
         assertThatThrownBy(() -> acceptInvitationService.execute(request))
                 .isInstanceOf(InvitationNotFoundException.class);
+
+        verify(petUserAccessRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldThrowInvitationEmailMismatchException_whenTokenEmailDiffersFromInvitation() {
+        when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
+        when(currentUserIdentity.current())
+                .thenReturn(new AuthenticatedUser(userId, "otro@correo.com", true));
+
+        AcceptInvitationRequest request = AcceptInvitationRequest.builder()
+                .token(token).userId(userId).build();
+
+        assertThatThrownBy(() -> acceptInvitationService.execute(request))
+                .isInstanceOf(InvitationEmailMismatchException.class);
+
+        verify(petUserAccessRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldAccept_whenTokenEmailDiffersOnlyInCase() {
+        when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
+        when(currentUserIdentity.current())
+                .thenReturn(new AuthenticatedUser(userId, INVITATION_EMAIL.toUpperCase(), true));
+        when(petUserAccessRepositoryPort.findByPetIdAndUserId(petId, userId)).thenReturn(Optional.empty());
+        when(petInvitationRepositoryPort.save(any(PetInvitation.class))).thenReturn(invitation);
+        when(petUserAccessRepositoryPort.save(any(PetUserAccess.class))).thenReturn(mock(PetUserAccess.class));
+        when(petRepositoryPort.findById(petId)).thenReturn(Optional.of(pet));
+
+        AcceptInvitationRequest request = AcceptInvitationRequest.builder()
+                .token(token).userId(userId).build();
+
+        assertThatNoException().isThrownBy(() -> acceptInvitationService.execute(request));
+    }
+
+    @Test
+    void execute_shouldThrowEmailNotVerifiedException_whenTokenEmailIsNotVerified() {
+        when(petInvitationRepositoryPort.findByToken(token)).thenReturn(Optional.of(invitation));
+        when(currentUserIdentity.current())
+                .thenReturn(new AuthenticatedUser(userId, INVITATION_EMAIL, false));
+
+        AcceptInvitationRequest request = AcceptInvitationRequest.builder()
+                .token(token).userId(userId).build();
+
+        assertThatThrownBy(() -> acceptInvitationService.execute(request))
+                .isInstanceOf(EmailNotVerifiedException.class);
 
         verify(petUserAccessRepositoryPort, never()).save(any());
     }

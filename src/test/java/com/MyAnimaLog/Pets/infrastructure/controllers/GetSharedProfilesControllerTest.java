@@ -77,6 +77,18 @@ class GetSharedProfilesControllerTest {
     }
 
     @Test
+    void getSharedProfiles_shouldReturn403_whenAskingForAnotherUser() throws Exception {
+        when(getSharedProfilesUseCase.execute(any(GetSharedProfilesRequest.class)))
+                .thenThrow(new com.MyAnimaLog.Pets.domain.exceptions.IdentityMismatchException());
+
+        mockMvc.perform(get("/pets/shared")
+                        .param("userId", userId.toString())
+                        .with(csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("IDENTITY_MISMATCH"));
+    }
+
+    @Test
     void getSharedProfiles_shouldReturn200WithEmptyList_whenNoProfilesExist() throws Exception {
         when(getSharedProfilesUseCase.execute(any(GetSharedProfilesRequest.class)))
                 .thenReturn(Collections.emptyList());
