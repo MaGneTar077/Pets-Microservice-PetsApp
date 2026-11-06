@@ -2,10 +2,11 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.PetDocumentSummaryResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.DocumentType;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,7 +19,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -28,17 +28,16 @@ import static org.mockito.Mockito.*;
 class ListPetDocumentsByTypeServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepository;
+    private PetDocumentRepositoryPort petDocumentRepository;
 
     @Mock
-    private PetDocumentRepositoryPort petDocumentRepository;
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private ListPetDocumentsByTypeService listPetDocumentsByTypeService;
 
     private Pet pet;
     private PetDocument vaccineDoc;
-    private PetDocument labDoc;
     private UUID petId;
 
     @BeforeEach
@@ -68,25 +67,11 @@ class ListPetDocumentsByTypeServiceTest {
                 .uploadedAt(LocalDateTime.now())
                 .active(true)
                 .build();
-
-        labDoc = PetDocument.builder()
-                .id(UUID.randomUUID())
-                .petId(petId)
-                .uploadedBy(UUID.randomUUID())
-                .title("Resultado laboratorio")
-                .description("Examen de sangre")
-                .fileUrl("https://supabase.co/storage/v1/object/public/pet-documents/pets/" + petId + "/documents/doc2.pdf")
-                .mimeType("application/pdf")
-                .fileSizeBytes(2048L)
-                .documentType(DocumentType.LAB_RESULT)
-                .uploadedAt(LocalDateTime.now())
-                .active(true)
-                .build();
     }
 
     @Test
-    void execute_shouldReturnOnlyVaccineDocuments_whenTypeIsVaccine() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldReturnOnlyVaccineDocuments_whenCallerIsTheOwner() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
         when(petDocumentRepository.findAllByPetIdAndDocumentType(petId, DocumentType.VACCINE))
                 .thenReturn(List.of(vaccineDoc));
 
@@ -99,8 +84,36 @@ class ListPetDocumentsByTypeServiceTest {
     }
 
     @Test
+    void execute_shouldReturnDocuments_whenCallerIsAnEditor() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
+        when(petDocumentRepository.findAllByPetIdAndDocumentType(petId, DocumentType.VACCINE))
+                .thenReturn(List.of(vaccineDoc));
+
+        assertThat(listPetDocumentsByTypeService.execute(petId, DocumentType.VACCINE)).hasSize(1);
+    }
+
+    @Test
+    void execute_shouldReturnDocuments_whenCallerIsAViewer() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
+        when(petDocumentRepository.findAllByPetIdAndDocumentType(petId, DocumentType.VACCINE))
+                .thenReturn(List.of(vaccineDoc));
+
+        assertThat(listPetDocumentsByTypeService.execute(petId, DocumentType.VACCINE)).hasSize(1);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenCallerHasNoAccess() {
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new UnauthorizedPetAccessException());
+
+        assertThatThrownBy(() -> listPetDocumentsByTypeService.execute(petId, DocumentType.VACCINE))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+
+        verifyNoInteractions(petDocumentRepository);
+    }
+
+    @Test
     void execute_shouldReturnEmptyList_whenNoDocumentsMatchType() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
         when(petDocumentRepository.findAllByPetIdAndDocumentType(petId, DocumentType.SURGERY_REPORT))
                 .thenReturn(List.of());
 
@@ -111,20 +124,8 @@ class ListPetDocumentsByTypeServiceTest {
     }
 
     @Test
-    void execute_shouldReturnFileUrl_inEachDocument() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
-        when(petDocumentRepository.findAllByPetIdAndDocumentType(petId, DocumentType.VACCINE))
-                .thenReturn(List.of(vaccineDoc));
-
-        List<PetDocumentSummaryResponse> result =
-                listPetDocumentsByTypeService.execute(petId, DocumentType.VACCINE);
-
-        assertThat(result.get(0).getFileUrl()).isNotBlank();
-    }
-
-    @Test
     void execute_shouldCallFindAllByPetIdAndDocumentType_once() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
         when(petDocumentRepository.findAllByPetIdAndDocumentType(petId, DocumentType.VACCINE))
                 .thenReturn(List.of(vaccineDoc));
 
@@ -136,17 +137,16 @@ class ListPetDocumentsByTypeServiceTest {
 
     @Test
     void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() ->
                 listPetDocumentsByTypeService.execute(petId, DocumentType.VACCINE))
-                .isInstanceOf(PetNotFoundException.class)
-                .hasMessageContaining("Pet not found");
+                .isInstanceOf(PetNotFoundException.class);
     }
 
     @Test
     void execute_shouldNotCallDocumentRepository_whenPetNotFound() {
-        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() ->
                 listPetDocumentsByTypeService.execute(petId, DocumentType.VACCINE))

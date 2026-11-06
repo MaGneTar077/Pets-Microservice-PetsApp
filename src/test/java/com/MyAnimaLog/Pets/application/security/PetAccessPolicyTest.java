@@ -131,17 +131,30 @@ class PetAccessPolicyTest {
     }
 
     @Test
-    void requireOwnerOrUploader_shouldAllowTheUploader() {
+    void requireOwnerOrUploader_shouldAllowTheUploader_whenStillAnEditor() {
         givenPetOwnedBy(ownerId);
         givenCurrentUser(otherUserId);
+        givenSharedAccess(Rol.EDITOR);
 
         assertThat(petAccessPolicy.requireOwnerOrUploader(petId, otherUserId).getId()).isEqualTo(petId);
+    }
+
+    /** Lo subió siendo EDITOR, pero lo bajaron a VIEWER: ya no puede tocarlo. */
+    @Test
+    void requireOwnerOrUploader_shouldRejectTheUploader_whenDowngradedToViewer() {
+        givenPetOwnedBy(ownerId);
+        givenCurrentUser(otherUserId);
+        givenSharedAccess(Rol.VIEWER);
+
+        assertThatThrownBy(() -> petAccessPolicy.requireOwnerOrUploader(petId, otherUserId))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
     }
 
     @Test
     void requireOwnerOrUploader_shouldRejectAnybodyElse() {
         givenPetOwnedBy(ownerId);
         givenCurrentUser(otherUserId);
+        givenSharedAccess(Rol.EDITOR);
 
         assertThatThrownBy(() -> petAccessPolicy.requireOwnerOrUploader(petId, UUID.randomUUID()))
                 .isInstanceOf(UnauthorizedPetAccessException.class);
@@ -247,6 +260,7 @@ class PetAccessPolicyTest {
     void petWithoutOwner_shouldStillAllowTheUploaderOfADocument() {
         givenPetOwnedBy(null);
         givenCurrentUser(otherUserId);
+        givenSharedAccess(Rol.EDITOR);
 
         assertThat(petAccessPolicy.requireOwnerOrUploader(petId, otherUserId).getId()).isEqualTo(petId);
     }

@@ -5,6 +5,7 @@ import com.MyAnimaLog.Pets.application.dto.UpdatePetDocumentMetadataRequest;
 import com.MyAnimaLog.Pets.application.dto.UpdatePetDocumentMetadataResponse;
 import com.MyAnimaLog.Pets.application.ports.in.UpdatePetDocumentMetadataUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.exceptions.DocumentNotBelongsToPetException;
 import com.MyAnimaLog.Pets.domain.exceptions.DocumentNotFoundException;
 import com.MyAnimaLog.Pets.domain.exceptions.InvalidDocumentException;
@@ -17,7 +18,9 @@ import org.springframework.stereotype.Service;
 public class UpdatePetDocumentMetadataService implements UpdatePetDocumentMetadataUseCase {
 
     private final PetDocumentRepositoryPort documentRepository;
+    private final PetAccessPolicy petAccessPolicy;
 
+    /** Dueño, o {@code EDITOR} solo si él mismo subió el documento. {@code VIEWER} nunca. */
     @Override
     public UpdatePetDocumentMetadataResponse execute(UpdatePetDocumentMetadataRequest request) {
         PetDocument document = documentRepository.findById(request.getDocumentId())
@@ -28,6 +31,8 @@ public class UpdatePetDocumentMetadataService implements UpdatePetDocumentMetada
             throw new DocumentNotBelongsToPetException(
                     "Document does not belong to pet: " + request.getPetId());
         }
+
+        petAccessPolicy.requireOwnerOrUploader(request.getPetId(), document.getUploadedBy());
 
         if ((request.getTitle() == null || request.getTitle().isBlank()) &&
                 (request.getDescription() == null || request.getDescription().isBlank())) {

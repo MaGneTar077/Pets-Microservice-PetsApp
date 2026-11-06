@@ -20,7 +20,7 @@ public class DeletePetDocumentController {
     public ResponseEntity<DeletePetDocumentResponse> deleteDocument(
             @PathVariable UUID petId,
             @PathVariable UUID documentId,
-            @RequestParam UUID requestedBy
+            @RequestParam(required = false) UUID requestedBy
     ) {
         DeletePetDocumentRequest request = DeletePetDocumentRequest.builder()
                 .petId(petId)

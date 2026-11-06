@@ -99,10 +99,17 @@ public class PetAccessPolicy {
         return pet;
     }
 
-    /** Dueño o quien subió el documento. Para editar metadatos y borrar un documento. */
+    /**
+     * Dueño, o {@code EDITOR} que además subió el documento. Para editar metadatos y borrar un
+     * documento. Un {@code VIEWER} nunca pasa, aunque coincida con {@code uploadedBy} (por
+     * ejemplo si lo subió siendo {@code EDITOR} y luego lo bajaron de rol): lo que importa es el
+     * rol actual, no quién lo subió en su momento.
+     */
     public Pet requireOwnerOrUploader(UUID petId, UUID uploadedBy) {
         Pet pet = loadPet(petId);
-        if (!isOwner(pet) && !Objects.equals(uploadedBy, currentUserIdentity.userId())) {
+        boolean isUploaderWithEditAccess = Objects.equals(uploadedBy, currentUserIdentity.userId())
+                && resolve(pet).filter(role -> role == Rol.EDITOR).isPresent();
+        if (!isOwner(pet) && !isUploaderWithEditAccess) {
             throw new UnauthorizedPetAccessException("Only the owner or the uploader can modify this document");
         }
         return pet;

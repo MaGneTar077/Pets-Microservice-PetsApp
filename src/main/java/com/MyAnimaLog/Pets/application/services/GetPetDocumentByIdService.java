@@ -3,6 +3,7 @@ package com.MyAnimaLog.Pets.application.services;
 import com.MyAnimaLog.Pets.application.dto.GetPetDocumentResponse;
 import com.MyAnimaLog.Pets.application.ports.in.GetPetDocumentByIdUseCase;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.exceptions.DocumentNotBelongsToPetException;
 import com.MyAnimaLog.Pets.domain.exceptions.DocumentNotFoundException;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
@@ -15,8 +16,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class GetPetDocumentByIdService implements GetPetDocumentByIdUseCase {
 
-    private final PetDocumentRepositoryPort  documentRepository;
+    private final PetDocumentRepositoryPort documentRepository;
+    private final PetAccessPolicy petAccessPolicy;
 
+    /** Dueño, {@code EDITOR} o {@code VIEWER} pueden ver un documento. */
     @Override
     public GetPetDocumentResponse execute(UUID petId, UUID documentId) {
         PetDocument document = documentRepository.findById(documentId)
@@ -27,6 +30,8 @@ public class GetPetDocumentByIdService implements GetPetDocumentByIdUseCase {
             throw new DocumentNotBelongsToPetException(
                     "Document does not belong to pet: " + petId);
         }
+
+        petAccessPolicy.requireRead(petId);
 
         return toResponse(document);
     }

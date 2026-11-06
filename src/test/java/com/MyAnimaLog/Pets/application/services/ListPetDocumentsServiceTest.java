@@ -2,9 +2,10 @@ package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.PetDocumentSummaryResponse;
 import com.MyAnimaLog.Pets.application.ports.out.PetDocumentRepositoryPort;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.DocumentType;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import com.MyAnimaLog.Pets.domain.model.PetDocument;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
@@ -28,7 +29,7 @@ import static org.mockito.Mockito.*;
 class ListPetDocumentsServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepository;
+    private PetAccessPolicy petAccessPolicy;
 
     @Mock
     private PetDocumentRepositoryPort petDocumentRepository;
@@ -88,7 +89,7 @@ class ListPetDocumentsServiceTest {
 
     @Test
     void execute_shouldReturnListOfDocuments_whenPetExists() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
         when(petDocumentRepository.findAllByPetId(petId)).thenReturn(List.of(document1, document2));
 
         List<PetDocumentSummaryResponse> result = listPetDocumentsService.execute(petId);
@@ -101,7 +102,7 @@ class ListPetDocumentsServiceTest {
 
     @Test
     void execute_shouldReturnEmptyList_whenPetHasNoDocuments() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
         when(petDocumentRepository.findAllByPetId(petId)).thenReturn(List.of());
 
         List<PetDocumentSummaryResponse> result = listPetDocumentsService.execute(petId);
@@ -112,7 +113,7 @@ class ListPetDocumentsServiceTest {
 
     @Test
     void execute_shouldReturnFileUrl_inEachDocument() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
         when(petDocumentRepository.findAllByPetId(petId)).thenReturn(List.of(document1, document2));
 
         List<PetDocumentSummaryResponse> result = listPetDocumentsService.execute(petId);
@@ -123,7 +124,7 @@ class ListPetDocumentsServiceTest {
 
     @Test
     void execute_shouldCallFindAllByPetId_once() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
         when(petDocumentRepository.findAllByPetId(petId)).thenReturn(List.of(document1));
 
         listPetDocumentsService.execute(petId);
@@ -132,27 +133,52 @@ class ListPetDocumentsServiceTest {
     }
 
     @Test
-    void execute_shouldCallFindById_once() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+    void execute_shouldCheckReadAccess_once() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
         when(petDocumentRepository.findAllByPetId(petId)).thenReturn(List.of());
 
         listPetDocumentsService.execute(petId);
 
-        verify(petRepository, times(1)).findById(petId);
+        verify(petAccessPolicy, times(1)).requireRead(petId);
+    }
+
+    @Test
+    void execute_shouldReturnList_whenCallerIsAnEditor() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
+        when(petDocumentRepository.findAllByPetId(petId)).thenReturn(List.of(document1));
+
+        assertThat(listPetDocumentsService.execute(petId)).hasSize(1);
+    }
+
+    @Test
+    void execute_shouldReturnList_whenCallerIsAViewer() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(pet);
+        when(petDocumentRepository.findAllByPetId(petId)).thenReturn(List.of(document1));
+
+        assertThat(listPetDocumentsService.execute(petId)).hasSize(1);
+    }
+
+    @Test
+    void execute_shouldThrow403_whenCallerHasNoAccess() {
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new UnauthorizedPetAccessException());
+
+        assertThatThrownBy(() -> listPetDocumentsService.execute(petId))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+
+        verifyNoInteractions(petDocumentRepository);
     }
 
     @Test
     void execute_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() -> listPetDocumentsService.execute(petId))
-                .isInstanceOf(PetNotFoundException.class)
-                .hasMessageContaining("Pet not found");
+                .isInstanceOf(PetNotFoundException.class);
     }
 
     @Test
     void execute_shouldNotCallDocumentRepository_whenPetNotFound() {
-        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() -> listPetDocumentsService.execute(petId))
                 .isInstanceOf(PetNotFoundException.class);

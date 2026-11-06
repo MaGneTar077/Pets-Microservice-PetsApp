@@ -1,10 +1,11 @@
 package com.MyAnimaLog.Pets.application.services;
 
 import com.MyAnimaLog.Pets.application.dto.AgeResponse;
-import com.MyAnimaLog.Pets.application.ports.out.PetRepositoryPort;
+import com.MyAnimaLog.Pets.application.security.PetAccessPolicy;
 import com.MyAnimaLog.Pets.domain.enums.Sex;
 import com.MyAnimaLog.Pets.domain.exceptions.BirthDateNotRegisteredException;
 import com.MyAnimaLog.Pets.domain.exceptions.PetNotFoundException;
+import com.MyAnimaLog.Pets.domain.exceptions.UnauthorizedPetAccessException;
 import com.MyAnimaLog.Pets.domain.model.Pet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
 class CalculateAgeServiceTest {
 
     @Mock
-    private PetRepositoryPort petRepository;
+    private PetAccessPolicy petAccessPolicy;
 
     @InjectMocks
     private CalculateAgeService calculateAgeService;
@@ -59,8 +59,8 @@ class CalculateAgeServiceTest {
     }
 
     @Test
-    void calculateAge_shouldReturnAgeResponse_whenPetHasBirthDate() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(petWithBirthDate));
+    void calculateAge_shouldReturnAgeResponse_whenCallerIsTheOwner() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(petWithBirthDate);
 
         AgeResponse result = calculateAgeService.calculateAge(petId);
 
@@ -71,8 +71,30 @@ class CalculateAgeServiceTest {
     }
 
     @Test
+    void calculateAge_shouldReturnAgeResponse_whenCallerIsAnEditor() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(petWithBirthDate);
+
+        assertThat(calculateAgeService.calculateAge(petId)).isNotNull();
+    }
+
+    @Test
+    void calculateAge_shouldReturnAgeResponse_whenCallerIsAViewer() {
+        when(petAccessPolicy.requireRead(petId)).thenReturn(petWithBirthDate);
+
+        assertThat(calculateAgeService.calculateAge(petId)).isNotNull();
+    }
+
+    @Test
+    void calculateAge_shouldThrow403_whenCallerHasNoAccess() {
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new UnauthorizedPetAccessException());
+
+        assertThatThrownBy(() -> calculateAgeService.calculateAge(petId))
+                .isInstanceOf(UnauthorizedPetAccessException.class);
+    }
+
+    @Test
     void calculateAge_shouldThrowPetNotFoundException_whenPetDoesNotExist() {
-        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+        when(petAccessPolicy.requireRead(petId)).thenThrow(new PetNotFoundException(petId));
 
         assertThatThrownBy(() -> calculateAgeService.calculateAge(petId))
                 .isInstanceOf(PetNotFoundException.class);
@@ -80,18 +102,9 @@ class CalculateAgeServiceTest {
 
     @Test
     void calculateAge_shouldThrowBirthDateNotRegisteredException_whenBirthDateIsNull() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(petWithoutBirthDate));
+        when(petAccessPolicy.requireRead(petId)).thenReturn(petWithoutBirthDate);
 
         assertThatThrownBy(() -> calculateAgeService.calculateAge(petId))
                 .isInstanceOf(BirthDateNotRegisteredException.class);
-    }
-
-    @Test
-    void calculateAge_shouldCallFindById_once() {
-        when(petRepository.findById(petId)).thenReturn(Optional.of(petWithBirthDate));
-
-        calculateAgeService.calculateAge(petId);
-
-        verify(petRepository, times(1)).findById(petId);
     }
 }
